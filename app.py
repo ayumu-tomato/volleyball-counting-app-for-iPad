@@ -10,44 +10,50 @@ import xlsxwriter
 import time
 
 # ==========================================
-# 1. 設定 & CSS (iPad最適化: 巨大ボタン版)
+# 1. 設定 & CSS (iPad最適化 Ver 6.2)
 # ==========================================
-st.set_page_config(page_title="Volleyball Scouter Ver.6.1", layout="wide")
+st.set_page_config(page_title="Volleyball Scouter Ver.6.2", layout="wide")
 
 st.markdown("""
 <style>
-    .block-container { padding-top: 2rem; padding-bottom: 5rem; }
+    /* 1. 画面上部の余白をさらに大きく (隠れ防止) */
+    .block-container { 
+        padding-top: 6rem; 
+        padding-bottom: 5rem; 
+    }
     
-    /* 通常ボタン (Qualityなど) */
+    /* ボタン共通設定 */
     div.stButton > button {
         width: 100%;
-        height: 70px;
+        height: 65px; /* 押しやすい高さ */
         font-weight: bold;
-        font-size: 20px;
+        font-size: 22px;
         border-radius: 12px;
-        margin-bottom: 8px;
+        margin-bottom: 5px;
         touch-action: manipulation;
     }
     
-    /* --- 特大キーパッド (電卓) 用のCSSハック --- */
-    /* Time入力ステップのボタンだけを狙って大きくするのは難しいので、
-       特定のキー(k0〜k9, kclr, kent)を持つボタンをCSSで指定したいが、
-       Streamlitの仕様上難しい。
-       そのため、全体的にボタンを大きくしつつ、キーパッドはグリッドで大きく見せる。
-    */
-    
     /* スコアボード */
     .score-board { 
-        font-size: 50px; font-weight: 900; text-align: center; 
-        background: #333; color: white; padding: 10px; border-radius: 10px; 
+        font-size: 40px; font-weight: 900; text-align: center; 
+        background: #333; color: white; padding: 5px; border-radius: 8px; 
     }
-    .input-card { background-color: #f8f9fa; padding: 15px; border-radius: 15px; border: 2px solid #e9ecef; }
-    .step-header { font-size: 24px; font-weight: bold; color: #4c78a8; margin-bottom: 15px; border-bottom: 3px solid #4c78a8; }
     
+    /* 入力エリア枠 */
+    .input-card {
+        background-color: #f8f9fa; padding: 10px; border-radius: 15px; border: 2px solid #e9ecef;
+    }
+    
+    /* ステップヘッダー */
+    .step-header {
+        font-size: 20px; font-weight: bold; color: #4c78a8; margin-bottom: 10px; border-bottom: 2px solid #4c78a8;
+    }
+
+    /* ローテーション表 */
     .rot-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; text-align: center; font-weight: bold; font-size: 14px; }
     .rot-cell { border: 1px solid #555; padding: 8px; background: white; border-radius: 6px; }
     .rot-front { background: #ffebeb; }
-    .rot-server { border: 2px solid red; color: red; font-weight: 900; }
+    .rot-server { border: 3px solid red; color: red; font-weight: 900; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -57,8 +63,9 @@ defaults = {
     'set_name': '1', 'video_url': '', 'liberos': [], 'rotation': [], 'score': [0, 0], 'phase': 'R',
     'current_input_data': {}, 'data_log': [], 'points': [], 'setter_counts': {},
     'key_map': 0, 'time_buffer': "",
-    # コンビ集計用 (初期値あり)
-    'combo_counts': {'X5': 10, 'V5': 5, '1': 8, '2': 4, 'A': 3, 'B': 3, 'C': 2, 'P': 6}
+    'combo_counts': {'X5': 10, 'V5': 5, '1': 8, '2': 4, 'A': 3, 'B': 3, 'C': 2, 'P': 6},
+    # 入力リセット用
+    'key_roster': 0 
 }
 for k, v in defaults.items():
     if k not in st.session_state: st.session_state[k] = v
@@ -145,7 +152,6 @@ def count_combo_usage(combo):
 def commit_record(quality, winner=None):
     curr = st.session_state.current_input_data
     
-    # コンビ使用回数更新
     if curr.get('skill') == 'A':
         count_combo_usage(curr.get('combo', ''))
 
@@ -173,7 +179,6 @@ def commit_record(quality, winner=None):
         elif quality == '^': update_score('op')
         else: st.toast("Saved", icon="✅")
 
-    # リセット
     st.session_state.points = []
     st.session_state.current_input_data = {}
     st.session_state.scout_step = 0
@@ -186,26 +191,20 @@ def get_sorted_setters():
     sorted_list = sorted(candidates, key=lambda n: st.session_state.setter_counts.get(n, 0), reverse=True)
     return sorted_list + ["Direct/Two"]
 
-# Comboのトップ8を取得
 def get_top_combos():
-    # カウント順にソート
     sorted_c = sorted(st.session_state.combo_counts.items(), key=lambda x: x[1], reverse=True)
-    # 上位8個のキーを取得
     top_list = [x[0] for x in sorted_c[:8]]
-    
-    # もし8個未満ならデフォルトで埋める
     defaults = ["X5", "V5", "1", "2", "A", "B", "C", "P"]
     for d in defaults:
         if len(top_list) >= 8: break
         if d not in top_list: top_list.append(d)
-        
     return top_list
 
 # ==========================================
 # 3. アプリ進行フロー
 # ==========================================
 
-# --- 初期設定ウィザード ---
+# --- 初期設定 ---
 if st.session_state.stage < 6:
     st.title("🛠️ Game Setup")
     
@@ -230,15 +229,26 @@ if st.session_state.stage < 6:
         pos_names = ["1 (Server)", "6 (Back-C)", "5 (Back-L)", "4 (Front-L)", "3 (Front-C)", "2 (Front-R)"]
         st.subheader(f"Step 3: Lineup ({idx+1}/6)")
         st.info(f"Position: **{pos_names[idx]}**")
-        p_name = st.text_input("Player Name")
-        if st.button("Add Player"):
+        
+        # ★修正: キーを動的にしてリセットを確実に
+        def roster_done():
+            k = f"roster_{idx}" # 毎回違うキー
+            p_name = st.session_state[k]
             if p_name:
                 st.session_state.temp_roster.append(p_name)
                 if st.session_state.roster_cursor < 5:
                     st.session_state.roster_cursor += 1
                 else:
                     st.session_state.stage = 3
-                st.rerun()
+            # st.rerun() は on_change 後に自動で行われるため不要
+            
+        st.text_input("Player Name", key=f"roster_{idx}", on_change=roster_done)
+        
+        # (Enterが効かない場合のボタン)
+        if st.button("Next (Button)"):
+            # ボタン押下時は現在のテキストボックスの値が取得しにくいため、
+            # 基本はEnter推奨だが、Stateに残っていれば処理
+            pass 
 
     elif st.session_state.stage == 3:
         st.subheader("Step 4: Confirm")
@@ -307,7 +317,6 @@ elif st.session_state.stage == 6:
 
     col_map, col_card = st.columns([0.8, 1.5])
     
-    # --- Map ---
     with col_map:
         st.markdown("**MAP**")
         court_img = create_court_img(st.session_state.points)
@@ -330,50 +339,33 @@ elif st.session_state.stage == 6:
         msg = "Start" if len(st.session_state.points)==0 else ("End" if len(st.session_state.points)==1 else "Done")
         st.caption(f"Tap: {msg}")
 
-    # --- Input Card ---
     with col_card:
         st.markdown('<div class="input-card">', unsafe_allow_html=True)
         
-        # Step 0: Time (Giant Keypad)
+        # Step 0: Time (Keypad)
         if st.session_state.scout_step == 0:
             st.markdown('<div class="step-header">1. Time</div>', unsafe_allow_html=True)
-            
-            # 現在値表示
             disp_time = format_time(st.session_state.time_buffer)
             st.markdown(f"<h1 style='text-align:center; font-size:60px; margin:0;'>{disp_time}</h1>", unsafe_allow_html=True)
             
-            # CSSでボタンサイズを上書きする（特大サイズ）
-            st.markdown("""
-            <style>
-                div[data-testid="stHorizontalBlock"] button {
-                    height: 100px !important; /* 巨大化 */
-                    font-size: 30px !important;
-                    border-radius: 15px !important;
-                }
-            </style>
-            """, unsafe_allow_html=True)
-
-            # Keypad
             k1, k2, k3 = st.columns(3)
-            if k1.button("7"): st.session_state.time_buffer += "7"; st.rerun()
-            if k2.button("8"): st.session_state.time_buffer += "8"; st.rerun()
-            if k3.button("9"): st.session_state.time_buffer += "9"; st.rerun()
+            if k1.button(" 7 "): st.session_state.time_buffer += "7"; st.rerun()
+            if k2.button(" 8 "): st.session_state.time_buffer += "8"; st.rerun()
+            if k3.button(" 9 "): st.session_state.time_buffer += "9"; st.rerun()
             
             k4, k5, k6 = st.columns(3)
-            if k4.button("4"): st.session_state.time_buffer += "4"; st.rerun()
-            if k5.button("5"): st.session_state.time_buffer += "5"; st.rerun()
-            if k6.button("6"): st.session_state.time_buffer += "6"; st.rerun()
+            if k4.button(" 4 "): st.session_state.time_buffer += "4"; st.rerun()
+            if k5.button(" 5 "): st.session_state.time_buffer += "5"; st.rerun()
+            if k6.button(" 6 "): st.session_state.time_buffer += "6"; st.rerun()
             
             k7, k8, k9 = st.columns(3)
-            if k7.button("1"): st.session_state.time_buffer += "1"; st.rerun()
-            if k8.button("2"): st.session_state.time_buffer += "2"; st.rerun()
-            if k9.button("3"): st.session_state.time_buffer += "3"; st.rerun()
+            if k7.button(" 1 "): st.session_state.time_buffer += "1"; st.rerun()
+            if k8.button(" 2 "): st.session_state.time_buffer += "2"; st.rerun()
+            if k9.button(" 3 "): st.session_state.time_buffer += "3"; st.rerun()
             
             k0, kc, ke = st.columns(3)
-            if k0.button("0"): st.session_state.time_buffer += "0"; st.rerun()
-            if kc.button("CLR"): st.session_state.time_buffer = ""; st.rerun()
-            
-            # ENTERボタン (色付き)
+            if k0.button(" 0 "): st.session_state.time_buffer += "0"; st.rerun()
+            if kc.button(" CLR "): st.session_state.time_buffer = ""; st.rerun()
             if ke.button("ENTER", type="primary"):
                 st.session_state.current_input_data['time'] = disp_time
                 st.session_state.scout_step = 1
@@ -392,10 +384,8 @@ elif st.session_state.stage == 6:
                         st.session_state.current_input_data['setter'] = ""
                         st.session_state.current_input_data['combo'] = ""
                         st.session_state.scout_step = 4 
-                    elif sk == 'A':
-                        st.session_state.scout_step = 2
-                    else:
-                        st.session_state.scout_step = 2
+                    elif sk == 'A': st.session_state.scout_step = 2
+                    else: st.session_state.scout_step = 2
                     st.rerun()
             if st.button("🔙 Back"): st.session_state.scout_step = 0; st.rerun()
 
@@ -407,10 +397,8 @@ elif st.session_state.stage == 6:
             for i, p in enumerate(candidates):
                 if cols[i%2].button(p):
                     st.session_state.current_input_data['player'] = p
-                    if st.session_state.current_input_data['skill'] == 'A':
-                        st.session_state.scout_step = 25
-                    else:
-                        st.session_state.scout_step = 4
+                    if st.session_state.current_input_data['skill'] == 'A': st.session_state.scout_step = 25
+                    else: st.session_state.scout_step = 4
                     st.rerun()
             if st.button("🔙 Back"): st.session_state.scout_step = 1; st.rerun()
 
@@ -427,22 +415,17 @@ elif st.session_state.stage == 6:
                     st.rerun()
             if st.button("🔙 Back"): st.session_state.scout_step = 2; st.rerun()
 
-        # Step 3: Combo (Auto Sort)
+        # Step 3: Combo
         elif st.session_state.scout_step == 3:
-            st.markdown('<div class="step-header">3.8 Combo (Top 8)</div>', unsafe_allow_html=True)
-            
-            # 上位8個を取得
+            st.markdown('<div class="step-header">3.8 Combo</div>', unsafe_allow_html=True)
             top_combos = get_top_combos()
-            
             cc = st.columns(4)
             for i, c in enumerate(top_combos):
                 if cc[i%4].button(c):
                     st.session_state.current_input_data['combo'] = c
                     st.session_state.scout_step = 4
                     st.rerun()
-            
             st.markdown("---")
-            st.caption("New Combo Input")
             c_val = st.text_input("Type new combo")
             if st.button("Add & Next"):
                 if c_val:
@@ -487,23 +470,21 @@ elif st.session_state.stage == 6:
             st.session_state.points = []
             st.rerun()
 
-    # --- Data & Footer ---
     st.markdown("### Data Log")
     if len(st.session_state.data_log) > 0:
         df = pd.DataFrame(st.session_state.data_log)
         st.dataframe(df.iloc[::-1], height=150)
-        c_sub, c_dl = st.columns(2)
-        with c_sub:
+        c1, c2 = st.columns(2)
+        with c1:
             with st.expander("選手交代 / リベロ"):
                 out_p = st.selectbox("OUT", st.session_state.rotation)
                 in_p = st.text_input("IN Name")
                 if st.button("Change"):
-                    if in_p: 
-                        idx = st.session_state.rotation.index(out_p)
-                        st.session_state.rotation[idx] = in_p
-                        st.rerun()
-        with c_dl:
-            if st.button("FINISH (Download)"):
+                    idx = st.session_state.rotation.index(out_p)
+                    st.session_state.rotation[idx] = in_p
+                    st.rerun()
+        with c2:
+            if st.button("FINISH"):
                 buf = io.BytesIO()
                 with pd.ExcelWriter(buf, engine='xlsxwriter') as writer: df.to_excel(writer, index=False)
                 st.download_button("DL Excel", buf.getvalue(), "scout.xlsx")
