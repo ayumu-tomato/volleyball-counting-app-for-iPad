@@ -457,7 +457,7 @@ elif st.session_state.stage == 6:
         elif st.session_state.scout_step == 1:
             st.markdown('<div class="step-header">2. Skill</div>', unsafe_allow_html=True)
             cols = st.columns(3)
-            skills = [("Serve"), ("Reception"), ("Attack"), ("Block"), ("Dig")]
+            skills = [("S", "Serve"), ("R", "Reception"), ("A", "Attack"), ("B", "Block"), ("D", "Dig"), ("E", "Set")]
             for i, (sk, label) in enumerate(skills):
                 if cols[i%3].button(f"{sk}\n{label}"):
                     st.session_state.current_input_data['skill'] = sk
