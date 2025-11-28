@@ -8,59 +8,36 @@ from PIL import Image
 import datetime
 import xlsxwriter
 import time
+import json
+import os
 
 # ==========================================
-# 1. 設定 & CSS (iPad最適化 Ver 6.3)
+# 1. 設定 & CSS (iPad最適化 Ver 7.0)
 # ==========================================
-st.set_page_config(page_title="Volleyball Scouter Ver.6.3", layout="wide")
+st.set_page_config(page_title="Volleyball Scouter Ver.7.0", layout="wide")
 
 st.markdown("""
 <style>
-    /* 画面上部の余白 (隠れ防止) */
-    .block-container { 
-        padding-top: 6rem; 
-        padding-bottom: 8rem; 
-    }
+    .block-container { padding-top: 4rem; padding-bottom: 6rem; }
     
-    /* ボタン共通設定 */
     div.stButton > button {
-        width: 100%;
-        height: 65px;
-        font-weight: bold;
-        font-size: 22px;
-        border-radius: 12px;
-        margin-bottom: 5px;
-        touch-action: manipulation;
+        width: 100%; height: 65px; font-weight: bold; font-size: 22px;
+        border-radius: 12px; margin-bottom: 5px; touch-action: manipulation;
     }
-    
-    /* ダウンロードボタンを特に目立たせる */
     div.stDownloadButton > button {
-        background-color: #FF4B4B;
-        color: white;
-        height: 80px;
-        font-size: 24px;
-        border: 2px solid white;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        background-color: #FF4B4B; color: white; height: 80px; font-size: 24px;
+        border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
-
-    .score-board { 
-        font-size: 40px; font-weight: 900; text-align: center; 
-        background: #333; color: white; padding: 5px; border-radius: 8px; 
-    }
-    
-    .input-card {
-        background-color: #f8f9fa; padding: 10px; border-radius: 15px; border: 2px solid #e9ecef;
-    }
-    
-    .step-header {
-        font-size: 20px; font-weight: bold; color: #4c78a8; margin-bottom: 10px; border-bottom: 2px solid #4c78a8;
-    }
-
-    /* ローテーション表 */
+    .score-board { font-size: 40px; font-weight: 900; text-align: center; background: #333; color: white; padding: 5px; border-radius: 8px; }
+    .input-card { background-color: #f8f9fa; padding: 10px; border-radius: 15px; border: 2px solid #e9ecef; }
+    .step-header { font-size: 20px; font-weight: bold; color: #4c78a8; margin-bottom: 10px; border-bottom: 2px solid #4c78a8; }
     .rot-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; text-align: center; font-weight: bold; font-size: 14px; }
     .rot-cell { border: 1px solid #555; padding: 8px; background: white; border-radius: 6px; }
     .rot-front { background: #ffebeb; }
     .rot-server { border: 3px solid red; color: red; font-weight: 900; }
+    
+    /* ロードボタンを目立たせる */
+    .load-btn > button { background-color: #28a745; color: white; border: 2px solid #fff; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -77,7 +54,61 @@ for k, v in defaults.items():
     if k not in st.session_state: st.session_state[k] = v
 
 # ==========================================
-# 2. ロジック関数
+# 2. 保存・復元ロジック (Auto Save/Load)
+# ==========================================
+SAVE_DATA_FILE = "autosave_data.csv"
+SAVE_STATE_FILE = "autosave_state.json"
+
+def auto_save():
+    """現在の状態をファイルに保存する"""
+    # 1. データログの保存
+    if len(st.session_state.data_log) > 0:
+        pd.DataFrame(st.session_state.data_log).to_csv(SAVE_DATA_FILE, index=False)
+    
+    # 2. ゲーム状態（スコア、ローテなど）の保存
+    state_data = {
+        "score": st.session_state.score,
+        "rotation": st.session_state.rotation,
+        "phase": st.session_state.phase,
+        "set_name": st.session_state.set_name,
+        "video_url": st.session_state.video_url,
+        "liberos": st.session_state.liberos,
+        "setter_counts": st.session_state.setter_counts,
+        "combo_counts": st.session_state.combo_counts,
+        "stage": st.session_state.stage
+    }
+    with open(SAVE_STATE_FILE, 'w') as f:
+        json.dump(state_data, f)
+
+def load_autosave():
+    """保存ファイルから状態を復元する"""
+    try:
+        # データログ復元
+        if os.path.exists(SAVE_DATA_FILE):
+            df = pd.read_csv(SAVE_DATA_FILE)
+            st.session_state.data_log = df.to_dict('records')
+        
+        # ゲーム状態復元
+        if os.path.exists(SAVE_STATE_FILE):
+            with open(SAVE_STATE_FILE, 'r') as f:
+                state_data = json.load(f)
+                st.session_state.score = state_data["score"]
+                st.session_state.rotation = state_data["rotation"]
+                st.session_state.phase = state_data["phase"]
+                st.session_state.set_name = state_data["set_name"]
+                st.session_state.video_url = state_data["video_url"]
+                st.session_state.liberos = state_data["liberos"]
+                st.session_state.setter_counts = state_data["setter_counts"]
+                st.session_state.combo_counts = state_data["combo_counts"]
+                st.session_state.stage = 6 # 強制的にメイン画面へ
+                
+        st.toast("復元しました！ (Resumed)", icon="📂")
+        st.rerun()
+    except Exception as e:
+        st.error(f"復元に失敗しました: {e}")
+
+# ==========================================
+# 3. ロジック関数
 # ==========================================
 def get_zone(x, y, w, h):
     cx, cy = (x / w) * 9, (1 - (y / h)) * 18 
@@ -132,6 +163,7 @@ def time_to_sec(t_str):
 def rotate_team():
     r = st.session_state.rotation
     st.session_state.rotation = [r[-1]] + r[:-1]
+    auto_save() # 保存
 
 def update_score(winner):
     if winner == 'my':
@@ -146,6 +178,7 @@ def update_score(winner):
         st.session_state.score[1] += 1
         st.session_state.phase = 'R'
         st.toast("Op Point", icon="❌")
+    auto_save() # 保存
 
 def count_setter_usage(name):
     if name and name != "Direct/Two":
@@ -157,7 +190,6 @@ def count_combo_usage(combo):
 
 def commit_record(quality, winner=None):
     curr = st.session_state.current_input_data
-    
     if curr.get('skill') == 'A':
         count_combo_usage(curr.get('combo', ''))
 
@@ -191,6 +223,8 @@ def commit_record(quality, winner=None):
     st.session_state.scout_step = 0
     st.session_state.key_map += 1
     st.session_state.time_buffer = "" 
+    
+    auto_save() # ★ここで自動保存
     st.rerun()
 
 def get_sorted_setters():
@@ -208,7 +242,21 @@ def get_top_combos():
     return top_list
 
 # ==========================================
-# 3. アプリ進行フロー
+# 3. サイドバー: ロード機能
+# ==========================================
+with st.sidebar:
+    st.header("💾 Save Data")
+    if os.path.exists(SAVE_STATE_FILE):
+        st.info("前回のデータが見つかりました")
+        st.markdown('<div class="load-btn">', unsafe_allow_html=True)
+        if st.button("📂 続きから再開 (Load Auto-save)"):
+            load_autosave()
+        st.markdown('</div>', unsafe_allow_html=True)
+    else:
+        st.caption("保存されたデータはありません")
+
+# ==========================================
+# 4. アプリ進行フロー
 # ==========================================
 
 # --- 初期設定 ---
@@ -221,6 +269,7 @@ if st.session_state.stage < 6:
         if st.button("Next"):
             st.session_state.set_name = val
             st.session_state.stage = 1
+            auto_save()
             st.rerun()
 
     elif st.session_state.stage == 1:
@@ -229,6 +278,7 @@ if st.session_state.stage < 6:
         if st.button("Next"):
             st.session_state.video_url = val
             st.session_state.stage = 2
+            auto_save()
             st.rerun()
 
     elif st.session_state.stage == 2:
@@ -248,7 +298,6 @@ if st.session_state.stage < 6:
                     st.session_state.stage = 3
             
         st.text_input("Player Name", key=f"roster_{idx}", on_change=roster_done)
-        
         if st.button("Next (Button)"): pass 
 
     elif st.session_state.stage == 3:
@@ -267,6 +316,7 @@ if st.session_state.stage < 6:
         if c1.button("OK"):
             st.session_state.rotation = st.session_state.temp_roster
             st.session_state.stage = 4
+            auto_save()
             st.rerun()
         if c2.button("Retry"):
             st.session_state.stage = 2
@@ -280,18 +330,19 @@ if st.session_state.stage < 6:
         if st.button("Next"):
             st.session_state.liberos = [x.strip() for x in val.split(',')] if val else []
             st.session_state.stage = 5
+            auto_save()
             st.rerun()
 
     elif st.session_state.stage == 5:
         st.subheader("Step 6: First Phase")
         c1, c2 = st.columns(2)
         if c1.button("Serve (We)"):
-            st.session_state.phase = 'S'; st.session_state.stage = 6; st.rerun()
+            st.session_state.phase = 'S'; st.session_state.stage = 6; auto_save(); st.rerun()
         if c2.button("Reception (Op)"):
-            st.session_state.phase = 'R'; st.session_state.stage = 6; st.rerun()
+            st.session_state.phase = 'R'; st.session_state.stage = 6; auto_save(); st.rerun()
 
 # ==========================================
-# --- Stage 6: MAIN SCOUTING (iPad UI) ---
+# --- Stage 6: MAIN SCOUTING ---
 # ==========================================
 elif st.session_state.stage == 6:
     
@@ -345,7 +396,7 @@ elif st.session_state.stage == 6:
     with col_card:
         st.markdown('<div class="input-card">', unsafe_allow_html=True)
         
-        # Step 0: Time (Keypad)
+        # Step 0: Time
         if st.session_state.scout_step == 0:
             st.markdown('<div class="step-header">1. Time</div>', unsafe_allow_html=True)
             disp_time = format_time(st.session_state.time_buffer)
@@ -479,42 +530,34 @@ elif st.session_state.stage == 6:
         df = pd.DataFrame(st.session_state.data_log)
         st.dataframe(df.iloc[::-1], height=150)
         
-        st.markdown("### 11. FINISH")
-        c_format, c_dl = st.columns(2)
-        
-        with c_format:
-            # ★ 保存形式の選択
-            file_format = st.radio("Select Format:", [".xlsx (Excel)", ".csv"], horizontal=True)
-            
-        with c_dl:
-            # 選択された形式でダウンロード
-            export_df = df.copy()
-            export_df.rename(columns={"video_url": "Video_URL", "video_time": "Time_Sec"}, inplace=True)
-            
-            if file_format == ".xlsx (Excel)":
-                buf = io.BytesIO()
-                with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
-                    export_df.to_excel(writer, index=False)
-                st.download_button("📥 Download Excel", buf.getvalue(), "scout.xlsx", "application/vnd.ms-excel")
-            else:
-                # CSV (UTF-8-SIG for Excel compatibility)
-                csv = export_df.to_csv(index=False).encode('utf-8-sig')
-                st.download_button("📥 Download CSV", csv, "scout.csv", "text/csv")
-                
-            st.caption("※iPad: ダウンロード後、「ファイル」アプリから共有してください")
-            
-        # 選手交代エリア
-        with st.expander("選手交代 / リベロ"):
-            c_sub, c_lib = st.columns(2)
-            with c_sub:
+        c_sub, c_dl = st.columns(2)
+        with c_sub:
+            with st.expander("選手交代 / リベロ"):
                 out_p = st.selectbox("OUT", st.session_state.rotation)
                 in_p = st.text_input("IN Name")
                 if st.button("Change"):
-                    idx = st.session_state.rotation.index(out_p)
-                    st.session_state.rotation[idx] = in_p
-                    st.rerun()
-            with c_lib:
+                    if in_p: 
+                        idx = st.session_state.rotation.index(out_p)
+                        st.session_state.rotation[idx] = in_p
+                        auto_save()
+                        st.rerun()
                 lib_t = st.text_input("Liberos", ",".join(st.session_state.liberos))
                 if st.button("Update"):
                     st.session_state.liberos = [x.strip() for x in lib_t.split(',')]
+                    auto_save()
                     st.rerun()
+        with c_dl:
+            c_format, c_dbtn = st.columns(2)
+            with c_format:
+                file_format = st.radio("Format:", [".xlsx", ".csv"], horizontal=True)
+            with c_dbtn:
+                export_df = df.copy()
+                export_df.rename(columns={"video_url": "Video_URL", "video_time": "Time_Sec"}, inplace=True)
+                if file_format == ".xlsx":
+                    buf = io.BytesIO()
+                    with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
+                        export_df.to_excel(writer, index=False)
+                    st.download_button("📥 Download", buf.getvalue(), "scout.xlsx", "application/vnd.ms-excel")
+                else:
+                    csv = export_df.to_csv(index=False).encode('utf-8-sig')
+                    st.download_button("📥 Download", csv, "scout.csv", "text/csv")
