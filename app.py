@@ -13,19 +13,35 @@ import os
 import copy
 
 # ==========================================
-# 1. 設定 & CSS (iPad最適化 Ver 7.2)
+# 1. 設定 & CSS (iPad最適化 Ver 6.5)
 # ==========================================
-st.set_page_config(page_title="Volleyball Scouter Ver.7.2", layout="wide")
+st.set_page_config(page_title="Volleyball Scouter Ver.6.5", layout="wide")
 
 st.markdown("""
 <style>
-    .block-container { padding-top: 4rem; padding-bottom: 6rem; }
-    
-    div.stButton > button {
-        width: 100%; height: 65px; font-weight: bold; font-size: 22px;
-        border-radius: 12px; margin-bottom: 5px; touch-action: manipulation;
+    /* 画面上部の余白 */
+    .block-container { 
+        padding-top: 5rem; 
+        padding-bottom: 6rem; 
     }
-    .keypad-btn > button { height: 80px !important; font-size: 30px !important; }
+    
+    /* ボタン共通設定 */
+    div.stButton > button {
+        width: 100% !important; /* 強制的に横幅100% */
+        height: 65px !important;
+        font-weight: bold !important;
+        font-size: 22px !important;
+        border-radius: 12px !important;
+        margin-bottom: 5px !important;
+        touch-action: manipulation;
+    }
+    
+    /* キーパッド専用 (さらに高さを確保) */
+    .keypad-container button {
+        height: 80px !important;
+        font-size: 28px !important;
+    }
+
     div.stDownloadButton > button {
         background-color: #FF4B4B; color: white; height: 80px; font-size: 24px;
         border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
@@ -170,9 +186,9 @@ def update_score_state(winner):
         st.session_state.score[0] += 1
         if st.session_state.phase == 'R':
             rotate_team()
-            st.toast("My Point! Rotated", icon="⭕")
+            st.toast("Sideout!", icon="⭕")
         else:
-            st.toast("My Point! (Break)", icon="⭕")
+            st.toast("Break!", icon="⭕")
         st.session_state.phase = 'S'
     elif winner == 'op':
         st.session_state.score[1] += 1
@@ -200,8 +216,7 @@ def get_top_combos():
         if d not in top_list: top_list.append(d)
     return top_list
 
-# --- 通常のプレー登録 ---
-def commit_record(quality):
+def commit_record(quality, winner=None):
     save_state_to_history()
     curr = st.session_state.current_input_data
     if curr.get('skill') == 'A': count_combo_usage(curr.get('combo', ''))
@@ -222,10 +237,12 @@ def commit_record(quality):
     }
     st.session_state.data_log.append(final_row)
     
-    skill = curr.get('skill','')
-    if (skill in ['A','B','S'] and quality=='#') or (skill=='A' and quality=='T'): update_score_state('my')
-    elif quality == '^': update_score_state('op')
-    else: st.toast("Saved", icon="✅")
+    if winner: update_score_state(winner)
+    else:
+        skill = curr.get('skill','')
+        if (skill in ['A','B','S'] and quality=='#') or (skill=='A' and quality=='T'): update_score_state('my')
+        elif quality == '^': update_score_state('op')
+        else: st.toast("Saved", icon="✅")
 
     st.session_state.points = []
     st.session_state.current_input_data = {}
@@ -235,31 +252,25 @@ def commit_record(quality):
     auto_save()
     st.rerun()
 
-# --- ★ 手動得点登録 (K列Memo使用) ---
 def manual_point_register(winner):
     save_state_to_history()
-    update_score_state(winner) # 先にスコア更新
-    
-    # メモ用の空行を作成
+    update_score_state(winner)
     final_row = {
         "set": st.session_state.set_name,
         "score": f"{st.session_state.score[0]}-{st.session_state.score[1]}",
         "phase": st.session_state.phase,
         "setter": "", "player": "", "skill": "", "combo": "", "quality": "",
         "start_zone": "", "end_zone": "",
-        "memo": "My Point" if winner == 'my' else "Op Point", # K列に記入
+        "memo": "My Point" if winner == 'my' else "Op Point",
         "video_url": st.session_state.video_url,
-        "video_time": 0 # 時間不明のため0 (または直前の時間を保持する等の工夫可)
+        "video_time": 0
     }
     st.session_state.data_log.append(final_row)
-    
-    # リセット
     st.session_state.points = []
     st.session_state.current_input_data = {}
     st.session_state.scout_step = 0
     st.session_state.key_map += 1
     st.session_state.time_buffer = "" 
-    
     auto_save()
     st.rerun()
 
@@ -289,15 +300,15 @@ if st.session_state.stage < 6:
         pos_names = ["1 (Server)", "6 (Back-C)", "5 (Back-L)", "4 (Front-L)", "3 (Front-C)", "2 (Front-R)"]
         st.subheader(f"Step 3: Lineup ({idx+1}/6)")
         st.info(f"Position: **{pos_names[idx]}**")
-        def roster_done():
-            k = f"roster_{idx}"
-            p_name = st.session_state[k]
+        k = f"roster_{idx}_{st.session_state.key_roster}"
+        p_name = st.text_input("Player Name", key=k)
+        if st.button("Add Player"):
             if p_name:
                 st.session_state.temp_roster.append(p_name)
+                st.session_state.key_roster += 1
                 if st.session_state.roster_cursor < 5: st.session_state.roster_cursor += 1
                 else: st.session_state.stage = 3
-        st.text_input("Player Name", key=f"roster_{idx}", on_change=roster_done)
-        if st.button("Next (Button)"): pass 
+                st.rerun()
     elif st.session_state.stage == 3:
         st.subheader("Step 4: Confirm")
         r = st.session_state.temp_roster
@@ -326,7 +337,6 @@ elif st.session_state.stage == 6:
     with c_score:
         st.markdown(f'<div class="score-board">{st.session_state.score[0]}-{st.session_state.score[1]} ({st.session_state.phase})</div>', unsafe_allow_html=True)
         b1, b2 = st.columns(2)
-        # ★マニュアル得点ボタン (K列記録版)
         if b1.button("My Point (+1)"): manual_point_register('my')
         if b2.button("Op Point (+1)"): manual_point_register('op')
 
@@ -360,25 +370,44 @@ elif st.session_state.stage == 6:
             st.markdown('<div class="step-header">1. Time</div>', unsafe_allow_html=True)
             disp_time = format_time(st.session_state.time_buffer)
             st.markdown(f"<h1 style='text-align:center; font-size:60px; margin:0;'>{disp_time}</h1>", unsafe_allow_html=True)
-            st.markdown("""<style>div[data-testid="stHorizontalBlock"] button { height: 100px !important; font-size: 30px !important; border-radius: 15px !important; }</style>""", unsafe_allow_html=True)
-            k1, k2, k3 = st.columns(3)
-            if k1.button(" 7 ", key="k7"): st.session_state.time_buffer += "7"; st.rerun()
-            if k2.button(" 8 ", key="k8"): st.session_state.time_buffer += "8"; st.rerun()
-            if k3.button(" 9 ", key="k9"): st.session_state.time_buffer += "9"; st.rerun()
-            k4, k5, k6 = st.columns(3)
-            if k4.button(" 4 ", key="k4"): st.session_state.time_buffer += "4"; st.rerun()
-            if k5.button(" 5 ", key="k5"): st.session_state.time_buffer += "5"; st.rerun()
-            if k6.button(" 6 ", key="k6"): st.session_state.time_buffer += "6"; st.rerun()
-            k7, k8, k9 = st.columns(3)
-            if k7.button(" 1 ", key="k1"): st.session_state.time_buffer += "1"; st.rerun()
-            if k8.button(" 2 ", key="k2"): st.session_state.time_buffer += "2"; st.rerun()
-            if k9.button(" 3 ", key="k3"): st.session_state.time_buffer += "3"; st.rerun()
-            k0, kc, ke = st.columns(3)
-            if k0.button(" 0 ", key="k0"): st.session_state.time_buffer += "0"; st.rerun()
-            if kc.button(" CLR ", key="kclr"): st.session_state.time_buffer = ""; st.rerun()
-            if ke.button("ENTER", key="kent", type="primary"):
-                st.session_state.current_input_data['time'] = disp_time
-                st.session_state.scout_step = 1; st.rerun()
+            
+            # キーパッドをコンテナに入れる
+            with st.container():
+                st.markdown('<div class="keypad-container">', unsafe_allow_html=True)
+                k1, k2, k3 = st.columns([1,1,1], gap="small") # 隙間小
+                with k1: 
+                    if st.button("7", key="k7", use_container_width=True): st.session_state.time_buffer += "7"; st.rerun()
+                with k2: 
+                    if st.button("8", key="k8", use_container_width=True): st.session_state.time_buffer += "8"; st.rerun()
+                with k3: 
+                    if st.button("9", key="k9", use_container_width=True): st.session_state.time_buffer += "9"; st.rerun()
+                
+                k4, k5, k6 = st.columns([1,1,1], gap="small")
+                with k4: 
+                    if st.button("4", key="k4", use_container_width=True): st.session_state.time_buffer += "4"; st.rerun()
+                with k5: 
+                    if st.button("5", key="k5", use_container_width=True): st.session_state.time_buffer += "5"; st.rerun()
+                with k6: 
+                    if st.button("6", key="k6", use_container_width=True): st.session_state.time_buffer += "6"; st.rerun()
+                
+                k7, k8, k9 = st.columns([1,1,1], gap="small")
+                with k7: 
+                    if st.button("1", key="k1", use_container_width=True): st.session_state.time_buffer += "1"; st.rerun()
+                with k8: 
+                    if st.button("2", key="k2", use_container_width=True): st.session_state.time_buffer += "2"; st.rerun()
+                with k9: 
+                    if st.button("3", key="k3", use_container_width=True): st.session_state.time_buffer += "3"; st.rerun()
+                
+                k0, kc, ke = st.columns([1,1,1], gap="small")
+                with k0: 
+                    if st.button("0", key="k0", use_container_width=True): st.session_state.time_buffer += "0"; st.rerun()
+                with kc: 
+                    if st.button("C", key="kclr", use_container_width=True): st.session_state.time_buffer = ""; st.rerun()
+                with ke: 
+                    if st.button("⏎", key="kent", use_container_width=True, type="primary"):
+                        st.session_state.current_input_data['time'] = disp_time
+                        st.session_state.scout_step = 1; st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
 
         elif st.session_state.scout_step == 1:
             st.markdown('<div class="step-header">2. Skill</div>', unsafe_allow_html=True)
