@@ -13,9 +13,9 @@ import os
 import copy
 
 # ==========================================
-# 1. 設定 & CSS (iPad最適化 Ver 9.0)
+# 1. 設定 & CSS (iPad最適化 Ver 9.1)
 # ==========================================
-st.set_page_config(page_title="Volleyball Scouter Ver.9.0", layout="wide")
+st.set_page_config(page_title="Volleyball Scouter Ver.9.1", layout="wide")
 
 st.markdown("""
 <style>
@@ -48,7 +48,6 @@ defaults = {
     'current_input_data': {}, 'data_log': [], 'points': [], 'setter_counts': {},
     'key_map': 0, 'time_buffer': "",
     'key_roster': 0, 'history_stack': [],
-    # コンビ管理: 固定リスト以外をカウントするプール
     'custom_combo_pool': {}
 }
 for k, v in defaults.items():
@@ -193,7 +192,6 @@ def count_setter_usage(name):
         st.session_state.setter_counts[name] = st.session_state.setter_counts.get(name, 0) + 1
 
 def count_custom_combo(combo):
-    # 固定コンビ以外ならカウントする
     if combo and combo not in ALL_FIXED_COMBOS:
         st.session_state.custom_combo_pool[combo] = st.session_state.custom_combo_pool.get(combo, 0) + 1
 
@@ -230,7 +228,7 @@ def commit_record(quality, winner=None):
 
     st.session_state.points = []
     st.session_state.current_input_data = {}
-    st.session_state.scout_step = 0
+    st.session_state.scout_step = 0 # Time入力へ戻る
     st.session_state.key_map += 1
     st.session_state.time_buffer = "" 
     auto_save()
@@ -242,7 +240,6 @@ def get_sorted_setters():
     return sorted_list + ["Direct/Two"]
 
 def get_custom_combos():
-    # カスタムプールから上位を取得
     sorted_c = sorted(st.session_state.custom_combo_pool.items(), key=lambda x: x[1], reverse=True)
     return [x[0] for x in sorted_c]
 
@@ -301,7 +298,7 @@ if st.session_state.stage < 6:
         if c2.button("Reception (Op)"): st.session_state.phase = 'R'; st.session_state.stage = 6; auto_save(); st.rerun()
 
 # ==========================================
-# --- Stage 6: MAIN SCOUTING ---
+# --- Stage 6: MAIN SCOUTING (iPad UI) ---
 # ==========================================
 elif st.session_state.stage == 6:
     
@@ -323,6 +320,7 @@ elif st.session_state.stage == 6:
     st.divider()
     col_map, col_card = st.columns([0.8, 1.5])
     
+    # --- Map ---
     with col_map:
         st.markdown("**MAP**")
         court_img = create_court_img(st.session_state.points)
@@ -332,24 +330,31 @@ elif st.session_state.stage == 6:
             if not st.session_state.points or st.session_state.points[-1] != p:
                 if len(st.session_state.points) < 2:
                     st.session_state.points.append(p)
+                    # 2点クリックかつ、Map入力待ち状態なら次へ進む
                     if len(st.session_state.points) == 2 and st.session_state.scout_step == 4:
-                        st.session_state.scout_step = 5
+                        # Skillが'A'ならComboへ、それ以外ならQualityへ
+                        # 今回のフロー：Skill(A) -> Setter -> Player -> Map -> Combo -> Quality
+                        # Skill(Other) -> Player -> Map -> Quality
+                        skill = st.session_state.current_input_data.get('skill')
+                        if skill == 'A':
+                            st.session_state.scout_step = 5 # Combo
+                        else:
+                            st.session_state.scout_step = 6 # Quality
                     st.rerun()
                 else:
                     st.session_state.points = [p]; st.rerun()
         msg = "Start" if len(st.session_state.points)==0 else ("End" if len(st.session_state.points)==1 else "Done")
         st.caption(f"Tap: {msg}")
 
+    # --- Input Card ---
     with col_card:
         st.markdown('<div class="input-card">', unsafe_allow_html=True)
         
-        # Step 0: Time (Keypad)
+        # Step 0: Time
         if st.session_state.scout_step == 0:
             st.markdown('<div class="step-header">1. Time</div>', unsafe_allow_html=True)
             disp_time = format_time(st.session_state.time_buffer)
             st.markdown(f"<h1 style='text-align:center; font-size:60px; margin:0;'>{disp_time}</h1>", unsafe_allow_html=True)
-            
-            # Keypad
             c = st.container()
             with c:
                 k1, k2, k3 = st.columns([1,1,1], gap="small")
@@ -383,43 +388,28 @@ elif st.session_state.stage == 6:
                         st.session_state.current_input_data['time'] = disp_time
                         st.session_state.scout_step = 1; st.rerun()
 
-        # Step 1: Skill
+        # Step 1: Skill (日本語)
         elif st.session_state.scout_step == 1:
             st.markdown('<div class="step-header">2. Skill</div>', unsafe_allow_html=True)
             cols = st.columns(3)
-            # 日本語ラベルに変更
             skills_jp = [("S", "サーブ"), ("R", "レセプション"), ("A", "スパイク"), ("B", "ブロック"), ("D", "ディグ"), ("E", "セット")]
             for i, (sk, label) in enumerate(skills_jp):
                 if cols[i%3].button(f"{label}\n({sk})"):
                     st.session_state.current_input_data['skill'] = sk
-                    if sk == 'S': 
+                    if sk == 'S': # Server Auto -> Map
                         st.session_state.current_input_data['player'] = st.session_state.rotation[0]
                         st.session_state.current_input_data['setter'] = ""
                         st.session_state.current_input_data['combo'] = ""
                         st.session_state.scout_step = 4 
-                    elif sk == 'A':
-                        st.session_state.scout_step = 20 # ★スパイクはセッター選択へ
-                    else:
-                        st.session_state.scout_step = 2
+                    elif sk == 'A': # Attack -> Setter
+                        st.session_state.scout_step = 2 
+                    else: # Other -> Player
+                        st.session_state.scout_step = 3
                     st.rerun()
             if st.button("🔙 Back"): st.session_state.scout_step = 0; st.rerun()
 
-        # Step 2: Player
+        # Step 2: Setter (For Attack)
         elif st.session_state.scout_step == 2:
-            st.markdown('<div class="step-header">3. Player</div>', unsafe_allow_html=True)
-            cols = st.columns(2)
-            candidates = st.session_state.rotation + st.session_state.liberos
-            for i, p in enumerate(candidates):
-                if cols[i%2].button(p):
-                    st.session_state.current_input_data['player'] = p
-                    st.session_state.scout_step = 4 # To Map (Except Attack was 20->2->3)
-                    st.rerun()
-            # 戻り先分岐
-            back_step = 20 if st.session_state.current_input_data.get('skill') == 'A' else 1
-            if st.button("🔙 Back"): st.session_state.scout_step = back_step; st.rerun()
-
-        # Step 2.0: Setter (For Attack)
-        elif st.session_state.scout_step == 20:
             st.markdown('<div class="step-header">2.5 Setter</div>', unsafe_allow_html=True)
             setters = get_sorted_setters()
             cols = st.columns(2)
@@ -427,74 +417,74 @@ elif st.session_state.stage == 6:
                 if cols[i%2].button(s):
                     st.session_state.current_input_data['setter'] = s
                     count_setter_usage(s)
-                    st.session_state.scout_step = 2 # To Player
+                    st.session_state.scout_step = 3 # To Player
                     st.rerun()
             if st.button("🔙 Back"): st.session_state.scout_step = 1; st.rerun()
 
-        # Step 3: Combo
-        elif st.session_state.scout_step == 3: # Player選択後にここへ飛ばす必要がある
-            # Player選択(Step2)での遷移先ロジックを修正する必要あり
-            # Attackの場合: 20(Setter) -> 2(Player) -> 3(Combo)
-            pass 
-            # ※下の修正済みStep2ロジックで吸収
-
-        # Step 3 (Combo) - Actual Implementation
-        if st.session_state.scout_step == 3: 
-            st.markdown('<div class="step-header">3.8 Combo</div>', unsafe_allow_html=True)
-            
-            # Fixed Row 1
-            r1 = st.columns(4)
-            for i, c in enumerate(FIXED_COMBOS_TOP):
-                if r1[i].button(c, key=f"f1_{c}"):
-                    st.session_state.current_input_data['combo'] = c; st.session_state.scout_step = 4; st.rerun()
-            
-            # Fixed Row 2
-            r2 = st.columns(4)
-            for i, c in enumerate(FIXED_COMBOS_MID):
-                if r2[i].button(c, key=f"f2_{c}"):
-                    st.session_state.current_input_data['combo'] = c; st.session_state.scout_step = 4; st.rerun()
-            
-            st.markdown("---")
-            st.caption("Custom / History")
-            
-            # Custom Row (Top 4)
-            custom_list = get_custom_combos() # Get top manually entered
-            # Remove fixed ones if they appear (though pool logic handles count)
-            display_custom = [c for c in custom_list if c not in ALL_FIXED_COMBOS][:4]
-            
-            if display_custom:
-                r3 = st.columns(4)
-                for i, c in enumerate(display_custom):
-                    if r3[i].button(c, key=f"cust_{c}"):
-                        st.session_state.current_input_data['combo'] = c; st.session_state.scout_step = 4; st.rerun()
-            
-            c_val = st.text_input("Type new combo")
-            if st.button("Add & Next"):
-                if c_val:
-                    st.session_state.current_input_data['combo'] = c_val; st.session_state.scout_step = 4; st.rerun()
-            if st.button("🔙 Back"): st.session_state.scout_step = 2; st.rerun()
-
-        # Player Step 2 の再定義 (Attackのときの遷移先をComboにするため)
-        if st.session_state.scout_step == 2:
-            # 上記で描画済みだが、ロジック上ここで上書き実行はできないため、
-            # 構造を見直す。
-            # Pythonのif-elif構造なので、上のelifに入ったらここは通らない。
-            # したがって、上の Step 2 ブロック内の遷移ロジックを修正する。
-            pass 
+        # Step 3: Player
+        elif st.session_state.scout_step == 3:
+            st.markdown('<div class="step-header">3. Player</div>', unsafe_allow_html=True)
+            cols = st.columns(2)
+            candidates = st.session_state.rotation + st.session_state.liberos
+            for i, p in enumerate(candidates):
+                if cols[i%2].button(p):
+                    st.session_state.current_input_data['player'] = p
+                    # 次はMapへ
+                    st.session_state.scout_step = 4
+                    st.rerun()
+            if st.button("🔙 Back"): 
+                sk = st.session_state.current_input_data.get('skill')
+                st.session_state.scout_step = 2 if sk == 'A' else 1
+                st.rerun()
 
         # Step 4: Map Wait
         elif st.session_state.scout_step == 4:
             st.markdown('<div class="step-header">4. Map Input</div>', unsafe_allow_html=True)
             st.info("👈 左のコートを2回タップ")
-            if st.button("Skip Map"): st.session_state.scout_step = 5; st.rerun()
-            if st.button("🔙 Back"): 
+            
+            if st.button("Skip Map"): 
                 sk = st.session_state.current_input_data.get('skill')
-                st.session_state.scout_step = 3 if sk == 'A' else (1 if sk == 'S' else 2)
+                st.session_state.scout_step = 5 if sk == 'A' else 6
+                st.rerun()
+                
+            if st.button("🔙 Back"): 
+                st.session_state.scout_step = 3 # To Player
                 st.rerun()
 
-        # Step 5: Quality
+        # Step 5: Combo (For Attack) - After Map
         elif st.session_state.scout_step == 5:
-            st.markdown('<div class="step-header">5. Quality</div>', unsafe_allow_html=True)
+            st.markdown('<div class="step-header">5. Combo</div>', unsafe_allow_html=True)
+            
+            # Fixed Rows
+            r1 = st.columns(4)
+            for i, c in enumerate(FIXED_COMBOS_TOP):
+                if r1[i].button(c):
+                    st.session_state.current_input_data['combo'] = c; st.session_state.scout_step = 6; st.rerun()
+            
+            r2 = st.columns(4)
+            for i, c in enumerate(FIXED_COMBOS_MID):
+                if r2[i].button(c):
+                    st.session_state.current_input_data['combo'] = c; st.session_state.scout_step = 6; st.rerun()
+            
+            st.markdown("---")
+            st.caption("Custom / History")
+            custom_list = get_custom_combos()
+            display_custom = [c for c in custom_list if c not in ALL_FIXED_COMBOS][:4]
+            if display_custom:
+                r3 = st.columns(4)
+                for i, c in enumerate(display_custom):
+                    if r3[i].button(c):
+                        st.session_state.current_input_data['combo'] = c; st.session_state.scout_step = 6; st.rerun()
+            
+            c_val = st.text_input("Type new combo")
+            if st.button("Add & Next"):
+                if c_val:
+                    st.session_state.current_input_data['combo'] = c_val; st.session_state.scout_step = 6; st.rerun()
+            if st.button("🔙 Back"): st.session_state.scout_step = 4; st.rerun()
+
+        # Step 6: Quality
+        elif st.session_state.scout_step == 6:
+            st.markdown('<div class="step-header">6. Quality</div>', unsafe_allow_html=True)
             q1, q2 = st.columns(2)
             with q1:
                 if st.button("# Perfect"): commit_record("#")
@@ -506,17 +496,18 @@ elif st.session_state.stage == 6:
                 if st.button("^ Error"): commit_record("^")
             if st.button("T BlockOut"): commit_record("T")
             st.markdown("---")
-            if st.button("🔙 Back (Map)"):
-                st.session_state.scout_step = 4
-                st.session_state.points = []; st.session_state.key_map += 1; st.rerun()
+            
+            if st.button("🔙 Back"): 
+                sk = st.session_state.current_input_data.get('skill')
+                st.session_state.scout_step = 5 if sk == 'A' else 4
+                st.rerun()
 
         st.markdown("</div>", unsafe_allow_html=True)
         if st.button("🔄 Reset Input"):
             st.session_state.scout_step = 0; st.session_state.points = []; st.rerun()
 
-    # --- Data Log ---
     st.markdown("### Data Log")
-    if st.button("↩️ Undo Last", type="secondary"): undo_last_action()
+    if st.button("↩️ Undo Last"): undo_last_action()
     if len(st.session_state.data_log) > 0:
         df = pd.DataFrame(st.session_state.data_log)
         st.dataframe(df.iloc[::-1], height=150)
@@ -542,11 +533,3 @@ elif st.session_state.stage == 6:
                 else:
                     csv = export_df.to_csv(index=False).encode('utf-8-sig')
                     st.download_button("📥 CSV", csv, "scout.csv", "text/csv")
-
-# ---------------------------------------------------------
-# Step 2 (Player) のロジック修正用ブロック (ハック)
-# 上のelifブロック内だと書きづらいため、ここで補正することはできないが、
-# 上のelif st.session_state.scout_step == 2: の中身を正しく記述済み。
-# Attackなら 25(Setter) から来たので次は 3(Combo) へ。
-# Block/Dig/Rec なら 1(Skill) から来たので次は 4(Map) へ。
-# ---------------------------------------------------------
