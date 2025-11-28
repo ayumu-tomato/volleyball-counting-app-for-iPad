@@ -8,44 +8,90 @@ from PIL import Image
 import datetime
 import xlsxwriter
 import time
-import json
-import os
-import copy # 状態保存用
 
 # ==========================================
-# 1. 設定 & CSS (iPad最適化 Ver 7.1)
+# 1. 設定 & CSS (iPad最適化 Ver 6.4)
 # ==========================================
-st.set_page_config(page_title="Volleyball Scouter Ver.7.1", layout="wide")
+st.set_page_config(page_title="Volleyball Scouter Ver.6.4", layout="wide")
 
 st.markdown("""
 <style>
-    .block-container { padding-top: 4rem; padding-bottom: 6rem; }
-    
-    /* 通常ボタン */
-    div.stButton > button {
-        width: 100%; height: 65px; font-weight: bold; font-size: 22px;
-        border-radius: 12px; margin-bottom: 5px; touch-action: manipulation;
+    /* 画面上部の余白 */
+    .block-container { 
+        padding-top: 4rem; 
+        padding-bottom: 6rem; 
     }
     
-    /* キーパッドボタン専用 (横長・高さ確保) */
-    .keypad-btn > button {
+    /* --- ボタンの強制巨大化 CSS --- */
+    /* Streamlitのボタンは div.stButton > button で構成されています。
+       !important をつけて他のスタイル設定を上書きします。
+    */
+    div.stButton > button {
+        width: 100%;
+        height: 100px !important; /* 高さを100pxに固定 */
+        font-weight: 900 !important; /* 太字 */
+        font-size: 32px !important; /* 文字サイズを32pxに */
+        border-radius: 15px !important; /* 角丸 */
+        margin-bottom: 10px !important;
+        border: 2px solid #e0e0e0 !important;
+        background-color: #ffffff;
+        color: #333333;
+        touch-action: manipulation;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1.0 !important; /* 文字の垂直位置調整 */
+    }
+    
+    /* 押した時の色 */
+    div.stButton > button:active {
+        background-color: #e6e6e6 !important;
+        border-color: #4c78a8 !important;
+        color: #4c78a8 !important;
+    }
+    
+    /* 特定のボタンの色分け (Downloadなど) */
+    div.stDownloadButton > button {
+        background-color: #FF4B4B !important; 
+        color: white !important;
         height: 80px !important;
-        font-size: 30px !important;
+        border: none !important;
     }
 
-    div.stDownloadButton > button {
-        background-color: #FF4B4B; color: white; height: 80px; font-size: 24px;
-        border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    /* プライマリーボタン (EnterやSaveなど) */
+    div.stButton > button[kind="primary"] {
+        background-color: #FF4B4B !important;
+        color: white !important;
+        border: none !important;
     }
-    .score-board { font-size: 40px; font-weight: 900; text-align: center; background: #333; color: white; padding: 5px; border-radius: 8px; }
-    .input-card { background-color: #f8f9fa; padding: 10px; border-radius: 15px; border: 2px solid #e9ecef; }
-    .step-header { font-size: 20px; font-weight: bold; color: #4c78a8; margin-bottom: 10px; border-bottom: 2px solid #4c78a8; }
+
+    /* スコアボード */
+    .score-board { 
+        font-size: 40px; font-weight: 900; text-align: center; 
+        background: #333; color: white; padding: 5px; border-radius: 8px; 
+    }
+    
+    /* Time表示エリア (少し控えめに) */
+    .time-display {
+        font-size: 40px; font-weight: bold; text-align: center;
+        color: #1f77b4; margin: 0; padding: 0;
+        font-family: monospace;
+    }
+    
+    /* 入力エリア枠 */
+    .input-card {
+        background-color: #f8f9fa; padding: 10px; border-radius: 15px; border: 2px solid #e9ecef;
+    }
+    
+    .step-header {
+        font-size: 20px; font-weight: bold; color: #4c78a8; margin-bottom: 10px; border-bottom: 2px solid #4c78a8;
+    }
+
+    /* ローテーション表 */
     .rot-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; text-align: center; font-weight: bold; font-size: 14px; }
     .rot-cell { border: 1px solid #555; padding: 8px; background: white; border-radius: 6px; }
     .rot-front { background: #ffebeb; }
     .rot-server { border: 3px solid red; color: red; font-weight: 900; }
-    
-    .undo-btn > button { background-color: #6c757d; color: white; border: 1px solid #ddd; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -57,20 +103,17 @@ defaults = {
     'key_map': 0, 'time_buffer': "",
     'combo_counts': {'X5': 10, 'V5': 5, '1': 8, '2': 4, 'A': 3, 'B': 3, 'C': 2, 'P': 6},
     'key_roster': 0,
-    # Undo用の履歴スタック (直前の状態を保存)
-    'history_stack': [] 
+    # Undo履歴
+    'history_stack': []
 }
 for k, v in defaults.items():
     if k not in st.session_state: st.session_state[k] = v
 
 # ==========================================
-# 2. 保存・復元・Undoロジック
+# 2. ロジック関数
 # ==========================================
-SAVE_DATA_FILE = "autosave_data.csv"
-SAVE_STATE_FILE = "autosave_state.json"
-
 def save_state_to_history():
-    """現在の状態（スコア、ローテ、フェーズ）を履歴に追加"""
+    import copy
     state_snapshot = {
         'score': copy.deepcopy(st.session_state.score),
         'rotation': copy.deepcopy(st.session_state.rotation),
@@ -79,80 +122,24 @@ def save_state_to_history():
         'combo_counts': copy.deepcopy(st.session_state.combo_counts)
     }
     st.session_state.history_stack.append(state_snapshot)
-    # 履歴は最大10件まで保持
-    if len(st.session_state.history_stack) > 10:
-        st.session_state.history_stack.pop(0)
+    if len(st.session_state.history_stack) > 10: st.session_state.history_stack.pop(0)
 
 def undo_last_action():
-    """直前の操作を取り消す"""
     if not st.session_state.data_log:
-        st.warning("削除するデータがありません")
+        st.warning("No data to delete")
         return
-
-    # 1. データログの最後の1行を削除
-    removed_item = st.session_state.data_log.pop()
-
-    # 2. 状態を復元 (Historyがあれば)
+    st.session_state.data_log.pop()
     if st.session_state.history_stack:
-        prev_state = st.session_state.history_stack.pop()
-        st.session_state.score = prev_state['score']
-        st.session_state.rotation = prev_state['rotation']
-        st.session_state.phase = prev_state['phase']
-        st.session_state.setter_counts = prev_state['setter_counts']
-        st.session_state.combo_counts = prev_state['combo_counts']
-        st.toast(f"Undo: {removed_item.get('skill')} deleted. Score & Rotation restored.", icon="↩️")
-    else:
-        # 履歴がない場合（ロード直後など）はログ削除のみ
-        st.toast("Last row deleted (No state history).", icon="🗑️")
-    
+        prev = st.session_state.history_stack.pop()
+        st.session_state.score = prev['score']
+        st.session_state.rotation = prev['rotation']
+        st.session_state.phase = prev['phase']
+        st.session_state.setter_counts = prev['setter_counts']
+        st.session_state.combo_counts = prev['combo_counts']
+        st.toast("Undo Successful", icon="↩️")
     auto_save()
     st.rerun()
 
-def auto_save():
-    if len(st.session_state.data_log) > 0:
-        pd.DataFrame(st.session_state.data_log).to_csv(SAVE_DATA_FILE, index=False)
-    
-    state_data = {
-        "score": st.session_state.score,
-        "rotation": st.session_state.rotation,
-        "phase": st.session_state.phase,
-        "set_name": st.session_state.set_name,
-        "video_url": st.session_state.video_url,
-        "liberos": st.session_state.liberos,
-        "setter_counts": st.session_state.setter_counts,
-        "combo_counts": st.session_state.combo_counts,
-        "stage": st.session_state.stage
-    }
-    with open(SAVE_STATE_FILE, 'w') as f:
-        json.dump(state_data, f)
-
-def load_autosave():
-    try:
-        if os.path.exists(SAVE_DATA_FILE):
-            df = pd.read_csv(SAVE_DATA_FILE)
-            st.session_state.data_log = df.to_dict('records')
-        
-        if os.path.exists(SAVE_STATE_FILE):
-            with open(SAVE_STATE_FILE, 'r') as f:
-                state_data = json.load(f)
-                st.session_state.score = state_data["score"]
-                st.session_state.rotation = state_data["rotation"]
-                st.session_state.phase = state_data["phase"]
-                st.session_state.set_name = state_data["set_name"]
-                st.session_state.video_url = state_data["video_url"]
-                st.session_state.liberos = state_data["liberos"]
-                st.session_state.setter_counts = state_data["setter_counts"]
-                st.session_state.combo_counts = state_data["combo_counts"]
-                st.session_state.stage = 6
-                
-        st.toast("復元しました！ (Resumed)", icon="📂")
-        st.rerun()
-    except Exception as e:
-        st.error(f"復元に失敗しました: {e}")
-
-# ==========================================
-# 3. ロジック関数
-# ==========================================
 def get_zone(x, y, w, h):
     cx, cy = (x / w) * 9, (1 - (y / h)) * 18 
     if 0 <= cy < 9: # 自コート
@@ -206,6 +193,7 @@ def time_to_sec(t_str):
 def rotate_team():
     r = st.session_state.rotation
     st.session_state.rotation = [r[-1]] + r[:-1]
+    auto_save()
 
 def update_score(winner):
     if winner == 'my':
@@ -220,6 +208,7 @@ def update_score(winner):
         st.session_state.score[1] += 1
         st.session_state.phase = 'R'
         st.toast("Op Point", icon="❌")
+    auto_save()
 
 def count_setter_usage(name):
     if name and name != "Direct/Two":
@@ -230,9 +219,7 @@ def count_combo_usage(combo):
         st.session_state.combo_counts[combo] = st.session_state.combo_counts.get(combo, 0) + 1
 
 def commit_record(quality, winner=None):
-    # ★保存前に現在の状態を履歴に積む
     save_state_to_history()
-    
     curr = st.session_state.current_input_data
     
     if curr.get('skill') == 'A':
@@ -267,7 +254,6 @@ def commit_record(quality, winner=None):
     st.session_state.scout_step = 0
     st.session_state.key_map += 1
     st.session_state.time_buffer = "" 
-    
     auto_save()
     st.rerun()
 
@@ -285,21 +271,42 @@ def get_top_combos():
         if d not in top_list: top_list.append(d)
     return top_list
 
-# ==========================================
-# 3. サイドバー: ロード機能
-# ==========================================
-with st.sidebar:
-    st.header("💾 Save Data")
+# 自動保存関連
+SAVE_DATA_FILE = "autosave_data.csv"
+SAVE_STATE_FILE = "autosave_state.json"
+
+def auto_save():
+    if len(st.session_state.data_log) > 0:
+        pd.DataFrame(st.session_state.data_log).to_csv(SAVE_DATA_FILE, index=False)
+    state_data = {
+        "score": st.session_state.score, "rotation": st.session_state.rotation, "phase": st.session_state.phase,
+        "set_name": st.session_state.set_name, "video_url": st.session_state.video_url, "liberos": st.session_state.liberos,
+        "setter_counts": st.session_state.setter_counts, "combo_counts": st.session_state.combo_counts, "stage": st.session_state.stage
+    }
+    with open(SAVE_STATE_FILE, 'w') as f: json.dump(state_data, f)
+
+def load_autosave():
+    if os.path.exists(SAVE_DATA_FILE): st.session_state.data_log = pd.read_csv(SAVE_DATA_FILE).to_dict('records')
     if os.path.exists(SAVE_STATE_FILE):
-        st.info("前回のデータが見つかりました")
-        if st.button("📂 続きから再開"):
-            load_autosave()
-    else:
-        st.caption("保存されたデータはありません")
+        with open(SAVE_STATE_FILE, 'r') as f:
+            d = json.load(f)
+            st.session_state.score = d["score"]; st.session_state.rotation = d["rotation"]
+            st.session_state.phase = d["phase"]; st.session_state.set_name = d["set_name"]
+            st.session_state.video_url = d["video_url"]; st.session_state.liberos = d["liberos"]
+            st.session_state.setter_counts = d["setter_counts"]; st.session_state.combo_counts = d["combo_counts"]
+            st.session_state.stage = 6
+    st.rerun()
 
 # ==========================================
-# 4. アプリ進行フロー
+# 3. アプリ進行フロー
 # ==========================================
+
+# サイドバー (Save/Load)
+with st.sidebar:
+    st.header("Menu")
+    if os.path.exists(SAVE_STATE_FILE):
+        if st.button("📂 Load Auto-save"): load_autosave()
+    st.caption("Ver 6.4: Huge Button Edition")
 
 # --- 初期設定 ---
 if st.session_state.stage < 6:
@@ -311,8 +318,7 @@ if st.session_state.stage < 6:
         if st.button("Next"):
             st.session_state.set_name = val
             st.session_state.stage = 1
-            auto_save()
-            st.rerun()
+            auto_save(); st.rerun()
 
     elif st.session_state.stage == 1:
         st.subheader("Step 2: Video URL")
@@ -320,8 +326,7 @@ if st.session_state.stage < 6:
         if st.button("Next"):
             st.session_state.video_url = val
             st.session_state.stage = 2
-            auto_save()
-            st.rerun()
+            auto_save(); st.rerun()
 
     elif st.session_state.stage == 2:
         idx = st.session_state.roster_cursor
@@ -329,51 +334,36 @@ if st.session_state.stage < 6:
         st.subheader(f"Step 3: Lineup ({idx+1}/6)")
         st.info(f"Position: **{pos_names[idx]}**")
         
-        def roster_done():
-            k = f"roster_{idx}"
-            p_name = st.session_state[k]
+        # リセット用Key
+        k = f"roster_{idx}_{st.session_state.key_roster}"
+        p_name = st.text_input("Player Name", key=k)
+        
+        if st.button("Add Player"):
             if p_name:
                 st.session_state.temp_roster.append(p_name)
+                st.session_state.key_roster += 1 # 入力欄クリア
                 if st.session_state.roster_cursor < 5:
                     st.session_state.roster_cursor += 1
                 else:
                     st.session_state.stage = 3
-            
-        st.text_input("Player Name", key=f"roster_{idx}", on_change=roster_done)
-        if st.button("Next (Button)"): pass 
+                st.rerun()
 
     elif st.session_state.stage == 3:
         st.subheader("Step 4: Confirm")
         r = st.session_state.temp_roster
-        st.markdown(f"""
-        <div class="rot-grid">
-            <div class="rot-cell rot-front">4: {r[3]}</div>
-            <div class="rot-cell rot-front">3: {r[4]}</div>
-            <div class="rot-cell rot-front">2: {r[5]}</div>
-            <div class="rot-cell">5: {r[2]}</div>
-            <div class="rot-cell">6: {r[1]}</div>
-            <div class="rot-cell rot-server">1: {r[0]}</div>
-        </div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="rot-grid"><div class="rot-cell rot-front">4: {r[3]}</div><div class="rot-cell rot-front">3: {r[4]}</div><div class="rot-cell rot-front">2: {r[5]}</div><div class="rot-cell">5: {r[2]}</div><div class="rot-cell">6: {r[1]}</div><div class="rot-cell rot-server">1: {r[0]}</div></div>""", unsafe_allow_html=True)
         c1, c2 = st.columns(2)
         if c1.button("OK"):
-            st.session_state.rotation = st.session_state.temp_roster
-            st.session_state.stage = 4
-            auto_save()
-            st.rerun()
+            st.session_state.rotation = st.session_state.temp_roster; st.session_state.stage = 4; auto_save(); st.rerun()
         if c2.button("Retry"):
-            st.session_state.stage = 2
-            st.session_state.roster_cursor = 0
-            st.session_state.temp_roster = []
-            st.rerun()
+            st.session_state.stage = 2; st.session_state.roster_cursor = 0; st.session_state.temp_roster = []; st.rerun()
 
     elif st.session_state.stage == 4:
         st.subheader("Step 5: Liberos")
         val = st.text_input("Names (comma separated)")
         if st.button("Next"):
             st.session_state.liberos = [x.strip() for x in val.split(',')] if val else []
-            st.session_state.stage = 5
-            auto_save()
-            st.rerun()
+            st.session_state.stage = 5; auto_save(); st.rerun()
 
     elif st.session_state.stage == 5:
         st.subheader("Step 6: First Phase")
@@ -393,25 +383,15 @@ elif st.session_state.stage == 6:
         st.markdown(f'<div class="score-board">{st.session_state.score[0]}-{st.session_state.score[1]} ({st.session_state.phase})</div>', unsafe_allow_html=True)
         b1, b2 = st.columns(2)
         if b1.button("My Point (+1)"):
-            save_state_to_history() # 手動変更もUndo可能に
-            update_score('my')
-            st.rerun()
+            save_state_to_history()
+            update_score('my'); auto_save(); st.rerun()
         if b2.button("Op Point (+1)"):
             save_state_to_history()
-            update_score('op')
-            st.rerun()
+            update_score('op'); auto_save(); st.rerun()
 
     with c_rot:
         r = st.session_state.rotation
-        st.markdown(f"""
-        <div class="rot-grid">
-            <div class="rot-cell rot-front">{r[3]}</div>
-            <div class="rot-cell rot-front">{r[4]}</div>
-            <div class="rot-cell rot-front">{r[5]}</div>
-            <div class="rot-cell">{r[2]}</div>
-            <div class="rot-cell">{r[1]}</div>
-            <div class="rot-cell rot-server">{r[0]}</div>
-        </div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="rot-grid"><div class="rot-cell rot-front">{r[3]}</div><div class="rot-cell rot-front">{r[4]}</div><div class="rot-cell rot-front">{r[5]}</div><div class="rot-cell">{r[2]}</div><div class="rot-cell">{r[1]}</div><div class="rot-cell rot-server">{r[0]}</div></div>""", unsafe_allow_html=True)
 
     st.divider()
 
@@ -444,38 +424,30 @@ elif st.session_state.stage == 6:
     with col_card:
         st.markdown('<div class="input-card">', unsafe_allow_html=True)
         
-        # Step 0: Time (Keypad)
+        # Step 0: Time (Giant Keypad)
         if st.session_state.scout_step == 0:
             st.markdown('<div class="step-header">1. Time</div>', unsafe_allow_html=True)
             disp_time = format_time(st.session_state.time_buffer)
-            st.markdown(f"<h1 style='text-align:center; font-size:60px; margin:0;'>{disp_time}</h1>", unsafe_allow_html=True)
+            st.markdown(f"<p class='time-display'>{disp_time}</p>", unsafe_allow_html=True)
             
-            # CSS注入でこのセクションのボタンだけを大きく見せる
-            st.markdown("""
-            <style>
-                /* 特定のボタンクラスに対するスタイル */
-                .element-container button { margin: 0px !important; }
-            </style>
-            """, unsafe_allow_html=True)
-
             k1, k2, k3 = st.columns(3)
-            if k1.button(" 7 ", key="k7"): st.session_state.time_buffer += "7"; st.rerun()
-            if k2.button(" 8 ", key="k8"): st.session_state.time_buffer += "8"; st.rerun()
-            if k3.button(" 9 ", key="k9"): st.session_state.time_buffer += "9"; st.rerun()
+            if k1.button("7", key="k7"): st.session_state.time_buffer += "7"; st.rerun()
+            if k2.button("8", key="k8"): st.session_state.time_buffer += "8"; st.rerun()
+            if k3.button("9", key="k9"): st.session_state.time_buffer += "9"; st.rerun()
             
             k4, k5, k6 = st.columns(3)
-            if k4.button(" 4 ", key="k4"): st.session_state.time_buffer += "4"; st.rerun()
-            if k5.button(" 5 ", key="k5"): st.session_state.time_buffer += "5"; st.rerun()
-            if k6.button(" 6 ", key="k6"): st.session_state.time_buffer += "6"; st.rerun()
+            if k4.button("4", key="k4"): st.session_state.time_buffer += "4"; st.rerun()
+            if k5.button("5", key="k5"): st.session_state.time_buffer += "5"; st.rerun()
+            if k6.button("6", key="k6"): st.session_state.time_buffer += "6"; st.rerun()
             
             k7, k8, k9 = st.columns(3)
-            if k7.button(" 1 ", key="k1"): st.session_state.time_buffer += "1"; st.rerun()
-            if k8.button(" 2 ", key="k2"): st.session_state.time_buffer += "2"; st.rerun()
-            if k9.button(" 3 ", key="k3"): st.session_state.time_buffer += "3"; st.rerun()
+            if k7.button("1", key="k1"): st.session_state.time_buffer += "1"; st.rerun()
+            if k8.button("2", key="k2"): st.session_state.time_buffer += "2"; st.rerun()
+            if k9.button("3", key="k3"): st.session_state.time_buffer += "3"; st.rerun()
             
             k0, kc, ke = st.columns(3)
-            if k0.button(" 0 ", key="k0"): st.session_state.time_buffer += "0"; st.rerun()
-            if kc.button(" CLR ", key="kclr"): st.session_state.time_buffer = ""; st.rerun()
+            if k0.button("0", key="k0"): st.session_state.time_buffer += "0"; st.rerun()
+            if kc.button("CLR", key="kclr"): st.session_state.time_buffer = ""; st.rerun()
             if ke.button("ENTER", key="kent", type="primary"):
                 st.session_state.current_input_data['time'] = disp_time
                 st.session_state.scout_step = 1
@@ -485,7 +457,7 @@ elif st.session_state.stage == 6:
         elif st.session_state.scout_step == 1:
             st.markdown('<div class="step-header">2. Skill</div>', unsafe_allow_html=True)
             cols = st.columns(3)
-            skills = [("S", "Serve"), ("R", "Reception"), ("A", "Attack"), ("B", "Block"), ("D", "Dig"), ("E", "Set")]
+            skills = [("Serve"), ("Reception"), ("Attack"), ("Block"), ("Dig")]
             for i, (sk, label) in enumerate(skills):
                 if cols[i%3].button(f"{sk}\n{label}"):
                     st.session_state.current_input_data['skill'] = sk
@@ -586,38 +558,35 @@ elif st.session_state.stage == 6:
 
     # --- Data & Footer ---
     st.markdown("### Data Log")
-    
-    # Undo Button (Data Logの上に配置)
-    if st.button("↩️ Undo (1つ戻す: Score & Rot)", type="secondary", help="直前の記録を削除し、スコアとローテを戻します"):
+    # Undoボタン
+    if st.button("↩️ Undo Last (Score & Data)", type="secondary"):
         undo_last_action()
 
     if len(st.session_state.data_log) > 0:
         df = pd.DataFrame(st.session_state.data_log)
         st.dataframe(df.iloc[::-1], height=150)
-        
-        c_sub, c_dl = st.columns(2)
-        with c_sub:
+        c1, c2 = st.columns(2)
+        with c1:
             with st.expander("選手交代 / リベロ"):
                 out_p = st.selectbox("OUT", st.session_state.rotation)
                 in_p = st.text_input("IN Name")
                 if st.button("Change"):
-                    if in_p: 
-                        idx = st.session_state.rotation.index(out_p)
-                        st.session_state.rotation[idx] = in_p
-                        auto_save()
-                        st.rerun()
-        with c_dl:
-            c_format, c_dbtn = st.columns(2)
-            with c_format:
-                file_format = st.radio("Format:", [".xlsx", ".csv"], horizontal=True)
-            with c_dbtn:
+                    idx = st.session_state.rotation.index(out_p)
+                    st.session_state.rotation[idx] = in_p
+                    st.rerun()
+        with c2:
+            st.markdown("#### Download")
+            c_fmt, c_dl = st.columns(2)
+            with c_fmt:
+                fmt = st.radio("Format", [".xlsx", ".csv"], horizontal=True)
+            with c_dl:
                 export_df = df.copy()
                 export_df.rename(columns={"video_url": "Video_URL", "video_time": "Time_Sec"}, inplace=True)
-                if file_format == ".xlsx":
+                if fmt == ".xlsx":
                     buf = io.BytesIO()
                     with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
                         export_df.to_excel(writer, index=False)
-                    st.download_button("📥 Download", buf.getvalue(), "scout.xlsx", "application/vnd.ms-excel")
+                    st.download_button("📥 XLSX", buf.getvalue(), "scout.xlsx", "application/vnd.ms-excel")
                 else:
                     csv = export_df.to_csv(index=False).encode('utf-8-sig')
-                    st.download_button("📥 Download", csv, "scout.csv", "text/csv")
+                    st.download_button("📥 CSV", csv, "scout.csv", "text/csv")
