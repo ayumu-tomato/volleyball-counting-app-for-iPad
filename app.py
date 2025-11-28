@@ -10,20 +10,29 @@ import xlsxwriter
 import time
 import json
 import os
+import copy # 状態保存用
 
 # ==========================================
-# 1. 設定 & CSS (iPad最適化 Ver 7.0)
+# 1. 設定 & CSS (iPad最適化 Ver 7.1)
 # ==========================================
-st.set_page_config(page_title="Volleyball Scouter Ver.7.0", layout="wide")
+st.set_page_config(page_title="Volleyball Scouter Ver.7.1", layout="wide")
 
 st.markdown("""
 <style>
     .block-container { padding-top: 4rem; padding-bottom: 6rem; }
     
+    /* 通常ボタン */
     div.stButton > button {
         width: 100%; height: 65px; font-weight: bold; font-size: 22px;
         border-radius: 12px; margin-bottom: 5px; touch-action: manipulation;
     }
+    
+    /* キーパッドボタン専用 (横長・高さ確保) */
+    .keypad-btn > button {
+        height: 80px !important;
+        font-size: 30px !important;
+    }
+
     div.stDownloadButton > button {
         background-color: #FF4B4B; color: white; height: 80px; font-size: 24px;
         border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
@@ -36,8 +45,7 @@ st.markdown("""
     .rot-front { background: #ffebeb; }
     .rot-server { border: 3px solid red; color: red; font-weight: 900; }
     
-    /* ロードボタンを目立たせる */
-    .load-btn > button { background-color: #28a745; color: white; border: 2px solid #fff; }
+    .undo-btn > button { background-color: #6c757d; color: white; border: 1px solid #ddd; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -48,24 +56,62 @@ defaults = {
     'current_input_data': {}, 'data_log': [], 'points': [], 'setter_counts': {},
     'key_map': 0, 'time_buffer': "",
     'combo_counts': {'X5': 10, 'V5': 5, '1': 8, '2': 4, 'A': 3, 'B': 3, 'C': 2, 'P': 6},
-    'key_roster': 0 
+    'key_roster': 0,
+    # Undo用の履歴スタック (直前の状態を保存)
+    'history_stack': [] 
 }
 for k, v in defaults.items():
     if k not in st.session_state: st.session_state[k] = v
 
 # ==========================================
-# 2. 保存・復元ロジック (Auto Save/Load)
+# 2. 保存・復元・Undoロジック
 # ==========================================
 SAVE_DATA_FILE = "autosave_data.csv"
 SAVE_STATE_FILE = "autosave_state.json"
 
+def save_state_to_history():
+    """現在の状態（スコア、ローテ、フェーズ）を履歴に追加"""
+    state_snapshot = {
+        'score': copy.deepcopy(st.session_state.score),
+        'rotation': copy.deepcopy(st.session_state.rotation),
+        'phase': st.session_state.phase,
+        'setter_counts': copy.deepcopy(st.session_state.setter_counts),
+        'combo_counts': copy.deepcopy(st.session_state.combo_counts)
+    }
+    st.session_state.history_stack.append(state_snapshot)
+    # 履歴は最大10件まで保持
+    if len(st.session_state.history_stack) > 10:
+        st.session_state.history_stack.pop(0)
+
+def undo_last_action():
+    """直前の操作を取り消す"""
+    if not st.session_state.data_log:
+        st.warning("削除するデータがありません")
+        return
+
+    # 1. データログの最後の1行を削除
+    removed_item = st.session_state.data_log.pop()
+
+    # 2. 状態を復元 (Historyがあれば)
+    if st.session_state.history_stack:
+        prev_state = st.session_state.history_stack.pop()
+        st.session_state.score = prev_state['score']
+        st.session_state.rotation = prev_state['rotation']
+        st.session_state.phase = prev_state['phase']
+        st.session_state.setter_counts = prev_state['setter_counts']
+        st.session_state.combo_counts = prev_state['combo_counts']
+        st.toast(f"Undo: {removed_item.get('skill')} deleted. Score & Rotation restored.", icon="↩️")
+    else:
+        # 履歴がない場合（ロード直後など）はログ削除のみ
+        st.toast("Last row deleted (No state history).", icon="🗑️")
+    
+    auto_save()
+    st.rerun()
+
 def auto_save():
-    """現在の状態をファイルに保存する"""
-    # 1. データログの保存
     if len(st.session_state.data_log) > 0:
         pd.DataFrame(st.session_state.data_log).to_csv(SAVE_DATA_FILE, index=False)
     
-    # 2. ゲーム状態（スコア、ローテなど）の保存
     state_data = {
         "score": st.session_state.score,
         "rotation": st.session_state.rotation,
@@ -81,14 +127,11 @@ def auto_save():
         json.dump(state_data, f)
 
 def load_autosave():
-    """保存ファイルから状態を復元する"""
     try:
-        # データログ復元
         if os.path.exists(SAVE_DATA_FILE):
             df = pd.read_csv(SAVE_DATA_FILE)
             st.session_state.data_log = df.to_dict('records')
         
-        # ゲーム状態復元
         if os.path.exists(SAVE_STATE_FILE):
             with open(SAVE_STATE_FILE, 'r') as f:
                 state_data = json.load(f)
@@ -100,7 +143,7 @@ def load_autosave():
                 st.session_state.liberos = state_data["liberos"]
                 st.session_state.setter_counts = state_data["setter_counts"]
                 st.session_state.combo_counts = state_data["combo_counts"]
-                st.session_state.stage = 6 # 強制的にメイン画面へ
+                st.session_state.stage = 6
                 
         st.toast("復元しました！ (Resumed)", icon="📂")
         st.rerun()
@@ -163,7 +206,6 @@ def time_to_sec(t_str):
 def rotate_team():
     r = st.session_state.rotation
     st.session_state.rotation = [r[-1]] + r[:-1]
-    auto_save() # 保存
 
 def update_score(winner):
     if winner == 'my':
@@ -178,7 +220,6 @@ def update_score(winner):
         st.session_state.score[1] += 1
         st.session_state.phase = 'R'
         st.toast("Op Point", icon="❌")
-    auto_save() # 保存
 
 def count_setter_usage(name):
     if name and name != "Direct/Two":
@@ -189,7 +230,11 @@ def count_combo_usage(combo):
         st.session_state.combo_counts[combo] = st.session_state.combo_counts.get(combo, 0) + 1
 
 def commit_record(quality, winner=None):
+    # ★保存前に現在の状態を履歴に積む
+    save_state_to_history()
+    
     curr = st.session_state.current_input_data
+    
     if curr.get('skill') == 'A':
         count_combo_usage(curr.get('combo', ''))
 
@@ -217,14 +262,13 @@ def commit_record(quality, winner=None):
         elif quality == '^': update_score('op')
         else: st.toast("Saved", icon="✅")
 
-    # リセット
     st.session_state.points = []
     st.session_state.current_input_data = {}
     st.session_state.scout_step = 0
     st.session_state.key_map += 1
     st.session_state.time_buffer = "" 
     
-    auto_save() # ★ここで自動保存
+    auto_save()
     st.rerun()
 
 def get_sorted_setters():
@@ -248,10 +292,8 @@ with st.sidebar:
     st.header("💾 Save Data")
     if os.path.exists(SAVE_STATE_FILE):
         st.info("前回のデータが見つかりました")
-        st.markdown('<div class="load-btn">', unsafe_allow_html=True)
-        if st.button("📂 続きから再開 (Load Auto-save)"):
+        if st.button("📂 続きから再開"):
             load_autosave()
-        st.markdown('</div>', unsafe_allow_html=True)
     else:
         st.caption("保存されたデータはありません")
 
@@ -342,7 +384,7 @@ if st.session_state.stage < 6:
             st.session_state.phase = 'R'; st.session_state.stage = 6; auto_save(); st.rerun()
 
 # ==========================================
-# --- Stage 6: MAIN SCOUTING ---
+# --- Stage 6: MAIN SCOUTING (iPad UI) ---
 # ==========================================
 elif st.session_state.stage == 6:
     
@@ -350,8 +392,14 @@ elif st.session_state.stage == 6:
     with c_score:
         st.markdown(f'<div class="score-board">{st.session_state.score[0]}-{st.session_state.score[1]} ({st.session_state.phase})</div>', unsafe_allow_html=True)
         b1, b2 = st.columns(2)
-        if b1.button("My Point (+1)"): update_score('my'); st.rerun()
-        if b2.button("Op Point (+1)"): update_score('op'); st.rerun()
+        if b1.button("My Point (+1)"):
+            save_state_to_history() # 手動変更もUndo可能に
+            update_score('my')
+            st.rerun()
+        if b2.button("Op Point (+1)"):
+            save_state_to_history()
+            update_score('op')
+            st.rerun()
 
     with c_rot:
         r = st.session_state.rotation
@@ -396,31 +444,39 @@ elif st.session_state.stage == 6:
     with col_card:
         st.markdown('<div class="input-card">', unsafe_allow_html=True)
         
-        # Step 0: Time
+        # Step 0: Time (Keypad)
         if st.session_state.scout_step == 0:
             st.markdown('<div class="step-header">1. Time</div>', unsafe_allow_html=True)
             disp_time = format_time(st.session_state.time_buffer)
             st.markdown(f"<h1 style='text-align:center; font-size:60px; margin:0;'>{disp_time}</h1>", unsafe_allow_html=True)
             
+            # CSS注入でこのセクションのボタンだけを大きく見せる
+            st.markdown("""
+            <style>
+                /* 特定のボタンクラスに対するスタイル */
+                .element-container button { margin: 0px !important; }
+            </style>
+            """, unsafe_allow_html=True)
+
             k1, k2, k3 = st.columns(3)
-            if k1.button(" 7 "): st.session_state.time_buffer += "7"; st.rerun()
-            if k2.button(" 8 "): st.session_state.time_buffer += "8"; st.rerun()
-            if k3.button(" 9 "): st.session_state.time_buffer += "9"; st.rerun()
+            if k1.button(" 7 ", key="k7"): st.session_state.time_buffer += "7"; st.rerun()
+            if k2.button(" 8 ", key="k8"): st.session_state.time_buffer += "8"; st.rerun()
+            if k3.button(" 9 ", key="k9"): st.session_state.time_buffer += "9"; st.rerun()
             
             k4, k5, k6 = st.columns(3)
-            if k4.button(" 4 "): st.session_state.time_buffer += "4"; st.rerun()
-            if k5.button(" 5 "): st.session_state.time_buffer += "5"; st.rerun()
-            if k6.button(" 6 "): st.session_state.time_buffer += "6"; st.rerun()
+            if k4.button(" 4 ", key="k4"): st.session_state.time_buffer += "4"; st.rerun()
+            if k5.button(" 5 ", key="k5"): st.session_state.time_buffer += "5"; st.rerun()
+            if k6.button(" 6 ", key="k6"): st.session_state.time_buffer += "6"; st.rerun()
             
             k7, k8, k9 = st.columns(3)
-            if k7.button(" 1 "): st.session_state.time_buffer += "1"; st.rerun()
-            if k8.button(" 2 "): st.session_state.time_buffer += "2"; st.rerun()
-            if k9.button(" 3 "): st.session_state.time_buffer += "3"; st.rerun()
+            if k7.button(" 1 ", key="k1"): st.session_state.time_buffer += "1"; st.rerun()
+            if k8.button(" 2 ", key="k2"): st.session_state.time_buffer += "2"; st.rerun()
+            if k9.button(" 3 ", key="k3"): st.session_state.time_buffer += "3"; st.rerun()
             
             k0, kc, ke = st.columns(3)
-            if k0.button(" 0 "): st.session_state.time_buffer += "0"; st.rerun()
-            if kc.button(" CLR "): st.session_state.time_buffer = ""; st.rerun()
-            if ke.button("ENTER", type="primary"):
+            if k0.button(" 0 ", key="k0"): st.session_state.time_buffer += "0"; st.rerun()
+            if kc.button(" CLR ", key="kclr"): st.session_state.time_buffer = ""; st.rerun()
+            if ke.button("ENTER", key="kent", type="primary"):
                 st.session_state.current_input_data['time'] = disp_time
                 st.session_state.scout_step = 1
                 st.rerun()
@@ -438,8 +494,10 @@ elif st.session_state.stage == 6:
                         st.session_state.current_input_data['setter'] = ""
                         st.session_state.current_input_data['combo'] = ""
                         st.session_state.scout_step = 4 
-                    elif sk == 'A': st.session_state.scout_step = 2
-                    else: st.session_state.scout_step = 2
+                    elif sk == 'A':
+                        st.session_state.scout_step = 2
+                    else:
+                        st.session_state.scout_step = 2
                     st.rerun()
             if st.button("🔙 Back"): st.session_state.scout_step = 0; st.rerun()
 
@@ -451,8 +509,10 @@ elif st.session_state.stage == 6:
             for i, p in enumerate(candidates):
                 if cols[i%2].button(p):
                     st.session_state.current_input_data['player'] = p
-                    if st.session_state.current_input_data['skill'] == 'A': st.session_state.scout_step = 25
-                    else: st.session_state.scout_step = 4
+                    if st.session_state.current_input_data['skill'] == 'A':
+                        st.session_state.scout_step = 25
+                    else:
+                        st.session_state.scout_step = 4
                     st.rerun()
             if st.button("🔙 Back"): st.session_state.scout_step = 1; st.rerun()
 
@@ -526,6 +586,11 @@ elif st.session_state.stage == 6:
 
     # --- Data & Footer ---
     st.markdown("### Data Log")
+    
+    # Undo Button (Data Logの上に配置)
+    if st.button("↩️ Undo (1つ戻す: Score & Rot)", type="secondary", help="直前の記録を削除し、スコアとローテを戻します"):
+        undo_last_action()
+
     if len(st.session_state.data_log) > 0:
         df = pd.DataFrame(st.session_state.data_log)
         st.dataframe(df.iloc[::-1], height=150)
@@ -541,11 +606,6 @@ elif st.session_state.stage == 6:
                         st.session_state.rotation[idx] = in_p
                         auto_save()
                         st.rerun()
-                lib_t = st.text_input("Liberos", ",".join(st.session_state.liberos))
-                if st.button("Update"):
-                    st.session_state.liberos = [x.strip() for x in lib_t.split(',')]
-                    auto_save()
-                    st.rerun()
         with c_dl:
             c_format, c_dbtn = st.columns(2)
             with c_format:
