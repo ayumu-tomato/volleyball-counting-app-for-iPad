@@ -10,22 +10,22 @@ import xlsxwriter
 import time
 
 # ==========================================
-# 1. 設定 & CSS (iPad最適化 Ver 6.2)
+# 1. 設定 & CSS (iPad最適化 Ver 6.3)
 # ==========================================
-st.set_page_config(page_title="Volleyball Scouter Ver.6.2", layout="wide")
+st.set_page_config(page_title="Volleyball Scouter Ver.6.3", layout="wide")
 
 st.markdown("""
 <style>
-    /* 1. 画面上部の余白をさらに大きく (隠れ防止) */
+    /* 画面上部の余白 (隠れ防止) */
     .block-container { 
         padding-top: 6rem; 
-        padding-bottom: 5rem; 
+        padding-bottom: 8rem; 
     }
     
     /* ボタン共通設定 */
     div.stButton > button {
         width: 100%;
-        height: 65px; /* 押しやすい高さ */
+        height: 65px;
         font-weight: bold;
         font-size: 22px;
         border-radius: 12px;
@@ -33,18 +33,25 @@ st.markdown("""
         touch-action: manipulation;
     }
     
-    /* スコアボード */
+    /* ダウンロードボタンを特に目立たせる */
+    div.stDownloadButton > button {
+        background-color: #FF4B4B;
+        color: white;
+        height: 80px;
+        font-size: 24px;
+        border: 2px solid white;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
     .score-board { 
         font-size: 40px; font-weight: 900; text-align: center; 
         background: #333; color: white; padding: 5px; border-radius: 8px; 
     }
     
-    /* 入力エリア枠 */
     .input-card {
         background-color: #f8f9fa; padding: 10px; border-radius: 15px; border: 2px solid #e9ecef;
     }
     
-    /* ステップヘッダー */
     .step-header {
         font-size: 20px; font-weight: bold; color: #4c78a8; margin-bottom: 10px; border-bottom: 2px solid #4c78a8;
     }
@@ -64,7 +71,6 @@ defaults = {
     'current_input_data': {}, 'data_log': [], 'points': [], 'setter_counts': {},
     'key_map': 0, 'time_buffer': "",
     'combo_counts': {'X5': 10, 'V5': 5, '1': 8, '2': 4, 'A': 3, 'B': 3, 'C': 2, 'P': 6},
-    # 入力リセット用
     'key_roster': 0 
 }
 for k, v in defaults.items():
@@ -179,6 +185,7 @@ def commit_record(quality, winner=None):
         elif quality == '^': update_score('op')
         else: st.toast("Saved", icon="✅")
 
+    # リセット
     st.session_state.points = []
     st.session_state.current_input_data = {}
     st.session_state.scout_step = 0
@@ -230,9 +237,8 @@ if st.session_state.stage < 6:
         st.subheader(f"Step 3: Lineup ({idx+1}/6)")
         st.info(f"Position: **{pos_names[idx]}**")
         
-        # ★修正: キーを動的にしてリセットを確実に
         def roster_done():
-            k = f"roster_{idx}" # 毎回違うキー
+            k = f"roster_{idx}"
             p_name = st.session_state[k]
             if p_name:
                 st.session_state.temp_roster.append(p_name)
@@ -240,15 +246,10 @@ if st.session_state.stage < 6:
                     st.session_state.roster_cursor += 1
                 else:
                     st.session_state.stage = 3
-            # st.rerun() は on_change 後に自動で行われるため不要
             
         st.text_input("Player Name", key=f"roster_{idx}", on_change=roster_done)
         
-        # (Enterが効かない場合のボタン)
-        if st.button("Next (Button)"):
-            # ボタン押下時は現在のテキストボックスの値が取得しにくいため、
-            # 基本はEnter推奨だが、Stateに残っていれば処理
-            pass 
+        if st.button("Next (Button)"): pass 
 
     elif st.session_state.stage == 3:
         st.subheader("Step 4: Confirm")
@@ -317,6 +318,7 @@ elif st.session_state.stage == 6:
 
     col_map, col_card = st.columns([0.8, 1.5])
     
+    # --- Map ---
     with col_map:
         st.markdown("**MAP**")
         court_img = create_court_img(st.session_state.points)
@@ -339,6 +341,7 @@ elif st.session_state.stage == 6:
         msg = "Start" if len(st.session_state.points)==0 else ("End" if len(st.session_state.points)==1 else "Done")
         st.caption(f"Tap: {msg}")
 
+    # --- Input Card ---
     with col_card:
         st.markdown('<div class="input-card">', unsafe_allow_html=True)
         
@@ -470,21 +473,48 @@ elif st.session_state.stage == 6:
             st.session_state.points = []
             st.rerun()
 
+    # --- Data & Footer ---
     st.markdown("### Data Log")
     if len(st.session_state.data_log) > 0:
         df = pd.DataFrame(st.session_state.data_log)
         st.dataframe(df.iloc[::-1], height=150)
-        c1, c2 = st.columns(2)
-        with c1:
-            with st.expander("選手交代 / リベロ"):
+        
+        st.markdown("### 11. FINISH")
+        c_format, c_dl = st.columns(2)
+        
+        with c_format:
+            # ★ 保存形式の選択
+            file_format = st.radio("Select Format:", [".xlsx (Excel)", ".csv"], horizontal=True)
+            
+        with c_dl:
+            # 選択された形式でダウンロード
+            export_df = df.copy()
+            export_df.rename(columns={"video_url": "Video_URL", "video_time": "Time_Sec"}, inplace=True)
+            
+            if file_format == ".xlsx (Excel)":
+                buf = io.BytesIO()
+                with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
+                    export_df.to_excel(writer, index=False)
+                st.download_button("📥 Download Excel", buf.getvalue(), "scout.xlsx", "application/vnd.ms-excel")
+            else:
+                # CSV (UTF-8-SIG for Excel compatibility)
+                csv = export_df.to_csv(index=False).encode('utf-8-sig')
+                st.download_button("📥 Download CSV", csv, "scout.csv", "text/csv")
+                
+            st.caption("※iPad: ダウンロード後、「ファイル」アプリから共有してください")
+            
+        # 選手交代エリア
+        with st.expander("選手交代 / リベロ"):
+            c_sub, c_lib = st.columns(2)
+            with c_sub:
                 out_p = st.selectbox("OUT", st.session_state.rotation)
                 in_p = st.text_input("IN Name")
                 if st.button("Change"):
                     idx = st.session_state.rotation.index(out_p)
                     st.session_state.rotation[idx] = in_p
                     st.rerun()
-        with c2:
-            if st.button("FINISH"):
-                buf = io.BytesIO()
-                with pd.ExcelWriter(buf, engine='xlsxwriter') as writer: df.to_excel(writer, index=False)
-                st.download_button("DL Excel", buf.getvalue(), "scout.xlsx")
+            with c_lib:
+                lib_t = st.text_input("Liberos", ",".join(st.session_state.liberos))
+                if st.button("Update"):
+                    st.session_state.liberos = [x.strip() for x in lib_t.split(',')]
+                    st.rerun()
