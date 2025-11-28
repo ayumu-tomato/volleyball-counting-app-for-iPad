@@ -13,9 +13,9 @@ import os
 import copy
 
 # ==========================================
-# 1. 設定 & CSS (iPad最適化 Ver 9.2)
+# 1. 設定 & CSS
 # ==========================================
-st.set_page_config(page_title="Volleyball Scouter Ver.9.2", layout="wide")
+st.set_page_config(page_title="Volleyball Scouter Ver.9.3", layout="wide")
 
 st.markdown("""
 <style>
@@ -48,7 +48,7 @@ defaults = {
     'current_input_data': {}, 'data_log': [], 'points': [], 'setter_counts': {},
     'key_map': 0, 'time_buffer': "",
     'key_roster': 0, 'history_stack': [],
-    'custom_combo_pool': {}
+    'custom_combo_pool': {}, # コンビ使用回数記録用
 }
 for k, v in defaults.items():
     if k not in st.session_state: st.session_state[k] = v
@@ -247,7 +247,6 @@ def get_custom_combos():
 # 3. アプリ進行フロー
 # ==========================================
 
-# サイドバー: ロード機能
 with st.sidebar:
     st.header("💾 Save Data")
     if os.path.exists(SAVE_STATE_FILE):
@@ -255,7 +254,6 @@ with st.sidebar:
         if st.button("📂 続きから再開"): load_autosave()
     else: st.caption("保存されたデータはありません")
 
-# --- 初期設定 ---
 if st.session_state.stage < 6:
     st.title("🛠️ Game Setup")
     if st.session_state.stage == 0:
@@ -297,21 +295,13 @@ if st.session_state.stage < 6:
         if c1.button("Serve (We)"): st.session_state.phase = 'S'; st.session_state.stage = 6; auto_save(); st.rerun()
         if c2.button("Reception (Op)"): st.session_state.phase = 'R'; st.session_state.stage = 6; auto_save(); st.rerun()
 
-# ==========================================
-# --- Stage 6: MAIN SCOUTING (iPad UI) ---
-# ==========================================
 elif st.session_state.stage == 6:
-    
     c_score, c_rot = st.columns([1.5, 1])
     with c_score:
         st.markdown(f'<div class="score-board">{st.session_state.score[0]}-{st.session_state.score[1]} ({st.session_state.phase})</div>', unsafe_allow_html=True)
         b1, b2 = st.columns(2)
-        if b1.button("My Point (+1)"):
-            save_state_to_history()
-            update_score('my'); auto_save(); st.rerun()
-        if b2.button("Op Point (+1)"):
-            save_state_to_history()
-            update_score('op'); auto_save(); st.rerun()
+        if b1.button("My Point (+1)"): save_state_to_history(); update_score('my'); auto_save(); st.rerun()
+        if b2.button("Op Point (+1)"): save_state_to_history(); update_score('op'); auto_save(); st.rerun()
 
     with c_rot:
         r = st.session_state.rotation
@@ -329,8 +319,10 @@ elif st.session_state.stage == 6:
             if not st.session_state.points or st.session_state.points[-1] != p:
                 if len(st.session_state.points) < 2:
                     st.session_state.points.append(p)
+                    # ★修正: マップ2点入力後、SkillがAならCombo(5)へ、それ以外ならQuality(6)へ
                     if len(st.session_state.points) == 2 and st.session_state.scout_step == 4:
-                        st.session_state.scout_step = 5
+                        skill = st.session_state.current_input_data.get('skill')
+                        st.session_state.scout_step = 5 if skill == 'A' else 6
                     st.rerun()
                 else:
                     st.session_state.points = [p]; st.rerun()
@@ -388,8 +380,8 @@ elif st.session_state.stage == 6:
                         st.session_state.current_input_data['setter'] = ""
                         st.session_state.current_input_data['combo'] = ""
                         st.session_state.scout_step = 4 
-                    elif sk == 'A': st.session_state.scout_step = 20 # Setter
-                    else: st.session_state.scout_step = 2 # Player
+                    elif sk == 'A': st.session_state.scout_step = 20
+                    else: st.session_state.scout_step = 2
                     st.rerun()
             if st.button("🔙 Back"): st.session_state.scout_step = 0; st.rerun()
 
@@ -401,7 +393,7 @@ elif st.session_state.stage == 6:
                 if cols[i%2].button(s):
                     st.session_state.current_input_data['setter'] = s
                     count_setter_usage(s)
-                    st.session_state.scout_step = 2 # To Player
+                    st.session_state.scout_step = 2
                     st.rerun()
             if st.button("🔙 Back"): st.session_state.scout_step = 1; st.rerun()
 
@@ -424,8 +416,7 @@ elif st.session_state.stage == 6:
                 sk = st.session_state.current_input_data.get('skill')
                 st.session_state.scout_step = 5 if sk == 'A' else 6
                 st.rerun()
-            if st.button("🔙 Back"): 
-                st.session_state.scout_step = 2; st.rerun()
+            if st.button("🔙 Back"): st.session_state.scout_step = 2; st.rerun()
 
         elif st.session_state.scout_step == 5:
             st.markdown('<div class="step-header">5. Combo</div>', unsafe_allow_html=True)
@@ -485,16 +476,15 @@ elif st.session_state.stage == 6:
                     st.session_state.rotation[idx] = in_p; st.rerun()
         with c2:
             st.markdown("#### Download")
-            c_fmt, c_dbtn = st.columns(2)
+            c_fmt, c_btn = st.columns(2)
             with c_fmt: fmt = st.radio("Format", [".xlsx", ".csv"], horizontal=True)
-            with c_dbtn:
+            with c_btn:
                 export_df = df.copy()
                 export_df.rename(columns={"video_url": "Video_URL", "video_time": "Time_Sec"}, inplace=True)
-                file_label = f"{st.session_state.set_name}"
                 if fmt == ".xlsx":
                     buf = io.BytesIO()
                     with pd.ExcelWriter(buf, engine='xlsxwriter') as writer: export_df.to_excel(writer, index=False)
-                    st.download_button(f"📥 DL {file_label}.xlsx", buf.getvalue(), f"{file_label}.xlsx", "application/vnd.ms-excel")
+                    st.download_button("📥 XLSX", buf.getvalue(), "scout.xlsx", "application/vnd.ms-excel")
                 else:
                     csv = export_df.to_csv(index=False).encode('utf-8-sig')
-                    st.download_button(f"📥 DL {file_label}.csv", csv, f"{file_label}.csv", "text/csv")
+                    st.download_button("📥 CSV", csv, "scout.csv", "text/csv")
