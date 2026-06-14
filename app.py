@@ -15,27 +15,16 @@ st.markdown("""
 <style>
     .block-container { padding-top: 4rem; padding-bottom: 6rem; }
     
-    /* カラム間の横隙間をほぼゼロに */
-    div[data-testid="stHorizontalBlock"] { gap: 2px !important; }
+    /* カラム間・縦積みの隙間を詰める */
+    div[data-testid="stHorizontalBlock"] { gap: 4px !important; }
+    div[data-testid="stVerticalBlock"] { gap: 4px !important; }
 
-    /* ボタン周りのdivの余白を全部つぶす */
-    div[data-testid="stHorizontalBlock"] > div { padding: 0 !important; }
-    div[data-testid="stVerticalBlock"] { gap: 2px !important; }
-    div[data-testid="element-container"]:has(button) { margin: 0 !important; padding: 0 !important; }
-
-    /* ボタン本体 — kindセレクタとtestidの両方で指定 */
-    div[data-testid="stButton"] button,
-    div[data-testid="stButton"] > button,
-    div.stButton > button,
-    button[kind="secondary"],
-    button[kind="primary"] {
-        width: 100% !important;
+    /* ボタンの高さ・文字だけ指定（幅は use_container_width に任せる） */
+    div[data-testid="stButton"] button {
         height: 80px !important;
         font-weight: 900 !important;
         font-size: 24px !important;
-        border-radius: 4px !important;
-        margin: 0 !important;
-        padding: 0 !important;
+        border-radius: 6px !important;
         touch-action: manipulation;
     }
 
@@ -254,7 +243,7 @@ with st.sidebar:
     st.header("💾 Save Data")
     if os.path.exists(SAVE_STATE_FILE):
         st.info("前回のデータが見つかりました")
-        if st.button("📂 続きから再開"):
+        if st.button("📂 続きから再開", use_container_width=True):
             try:
                 if os.path.exists(SAVE_DATA_FILE):
                     df = pd.read_csv(SAVE_DATA_FILE)
@@ -278,11 +267,11 @@ if st.session_state.stage < 6:
     if st.session_state.stage == 0:
         st.subheader("Step 1: Set Number")
         val = st.text_input("Set", value="1")
-        if st.button("Next"): st.session_state.set_name = val; st.session_state.stage = 1; auto_save(); st.rerun()
+        if st.button("Next", use_container_width=True): st.session_state.set_name = val; st.session_state.stage = 1; auto_save(); st.rerun()
     elif st.session_state.stage == 1:
         st.subheader("Step 2: Video URL")
         val = st.text_input("URL", value="")
-        if st.button("Next"): st.session_state.video_url = val; st.session_state.stage = 2; auto_save(); st.rerun()
+        if st.button("Next", use_container_width=True): st.session_state.video_url = val; st.session_state.stage = 2; auto_save(); st.rerun()
     elif st.session_state.stage == 2:
         idx = st.session_state.roster_cursor
         pos_names = ["1 (Server)", "6 (Back-C)", "5 (Back-L)", "4 (Front-L)", "3 (Front-C)", "2 (Front-R)"]
@@ -290,7 +279,7 @@ if st.session_state.stage < 6:
         st.info(f"Position: **{pos_names[idx]}**")
         k = f"roster_{idx}_{st.session_state.key_roster}"
         p_name = st.text_input("Player Name", key=k)
-        if st.button("Add Player"):
+        if st.button("Add Player", use_container_width=True):
             if p_name:
                 st.session_state.temp_roster.append(p_name)
                 st.session_state.key_roster += 1
@@ -302,36 +291,36 @@ if st.session_state.stage < 6:
         r = st.session_state.temp_roster
         st.markdown(f"""<div class="rot-grid"><div class="rot-cell rot-front">4: {r[3]}</div><div class="rot-cell rot-front">3: {r[4]}</div><div class="rot-cell rot-front">2: {r[5]}</div><div class="rot-cell">5: {r[2]}</div><div class="rot-cell">6: {r[1]}</div><div class="rot-cell rot-server">1: {r[0]}</div></div>""", unsafe_allow_html=True)
         c1, c2 = st.columns(2)
-        if c1.button("OK"): st.session_state.rotation = st.session_state.temp_roster; st.session_state.stage = 4; auto_save(); st.rerun()
-        if c2.button("Retry"): st.session_state.stage = 2; st.session_state.roster_cursor = 0; st.session_state.temp_roster = []; st.rerun()
+        if c1.button("OK", use_container_width=True): st.session_state.rotation = st.session_state.temp_roster; st.session_state.stage = 4; auto_save(); st.rerun()
+        if c2.button("Retry", use_container_width=True): st.session_state.stage = 2; st.session_state.roster_cursor = 0; st.session_state.temp_roster = []; st.rerun()
     elif st.session_state.stage == 4:
         st.subheader("Step 5: Liberos")
         val = st.text_input("Names (comma separated)")
-        if st.button("Next"): st.session_state.liberos = [x.strip() for x in val.split(',')] if val else []; st.session_state.stage = 5; auto_save(); st.rerun()
+        if st.button("Next", use_container_width=True): st.session_state.liberos = [x.strip() for x in val.split(',')] if val else []; st.session_state.stage = 5; auto_save(); st.rerun()
     elif st.session_state.stage == 5:
         st.subheader("Step 6: First Phase")
         c1, c2 = st.columns(2)
-        if c1.button("Serve (We)"): 
+        if c1.button("Serve (We)", use_container_width=True): 
             st.session_state.all_players = [p for p in st.session_state.rotation + st.session_state.liberos if p]
             st.session_state.phase = 'S'; st.session_state.stage = 6; auto_save(); st.rerun()
-        if c2.button("Reception (Op)"): 
+        if c2.button("Reception (Op)", use_container_width=True): 
             st.session_state.all_players = [p for p in st.session_state.rotation + st.session_state.liberos if p]
             st.session_state.phase = 'R'; st.session_state.stage = 6; auto_save(); st.rerun()
 
 elif st.session_state.stage == 6:
-    c_score, c_rot = st.columns([1.0, 1.2]) 
+    c_score, c_rot = st.columns([1.3, 1.0]) 
     with c_score:
         st.markdown(f'<div class="score-board">{st.session_state.score[0]}-{st.session_state.score[1]} ({st.session_state.phase})</div>', unsafe_allow_html=True)
         b1, b2 = st.columns(2)
-        if b1.button("My Point (+1)"): save_state_to_history(); update_score('my'); auto_save(); st.rerun()
-        if b2.button("Op Point (+1)"): save_state_to_history(); update_score('op'); auto_save(); st.rerun()
+        if b1.button("My Point (+1)", use_container_width=True): save_state_to_history(); update_score('my'); auto_save(); st.rerun()
+        if b2.button("Op Point (+1)", use_container_width=True): save_state_to_history(); update_score('op'); auto_save(); st.rerun()
     with c_rot:
         r = st.session_state.rotation
         st.markdown(f"""<div class="rot-grid"><div class="rot-cell rot-front">{r[3]}</div><div class="rot-cell rot-front">{r[4]}</div><div class="rot-cell rot-front">{r[5]}</div><div class="rot-cell">{r[2]}</div><div class="rot-cell">{r[1]}</div><div class="rot-cell rot-server">{r[0]}</div></div>""", unsafe_allow_html=True)
 
     st.divider()
     
-    col_map, col_card = st.columns([1.0, 1.2])
+    col_map, col_card = st.columns([1.3, 1.0])
     
     with col_map:
         st.markdown("**MAP (タップで着地点を記録)**")
@@ -364,32 +353,32 @@ elif st.session_state.stage == 6:
             with st.container():
                 k1, k2, k3 = st.columns(3)
                 with k1: 
-                    if st.button("7", key="k7"): st.session_state.time_buffer += "7"; st.rerun()
+                    if st.button("7", key="k7", use_container_width=True): st.session_state.time_buffer += "7"; st.rerun()
                 with k2: 
-                    if st.button("8", key="k8"): st.session_state.time_buffer += "8"; st.rerun()
+                    if st.button("8", key="k8", use_container_width=True): st.session_state.time_buffer += "8"; st.rerun()
                 with k3: 
-                    if st.button("9", key="k9"): st.session_state.time_buffer += "9"; st.rerun()
+                    if st.button("9", key="k9", use_container_width=True): st.session_state.time_buffer += "9"; st.rerun()
                 k4, k5, k6 = st.columns(3)
                 with k4: 
-                    if st.button("4", key="k4"): st.session_state.time_buffer += "4"; st.rerun()
+                    if st.button("4", key="k4", use_container_width=True): st.session_state.time_buffer += "4"; st.rerun()
                 with k5: 
-                    if st.button("5", key="k5"): st.session_state.time_buffer += "5"; st.rerun()
+                    if st.button("5", key="k5", use_container_width=True): st.session_state.time_buffer += "5"; st.rerun()
                 with k6: 
-                    if st.button("6", key="k6"): st.session_state.time_buffer += "6"; st.rerun()
+                    if st.button("6", key="k6", use_container_width=True): st.session_state.time_buffer += "6"; st.rerun()
                 k7, k8, k9 = st.columns(3)
                 with k7: 
-                    if st.button("1", key="k1"): st.session_state.time_buffer += "1"; st.rerun()
+                    if st.button("1", key="k1", use_container_width=True): st.session_state.time_buffer += "1"; st.rerun()
                 with k8: 
-                    if st.button("2", key="k2"): st.session_state.time_buffer += "2"; st.rerun()
+                    if st.button("2", key="k2", use_container_width=True): st.session_state.time_buffer += "2"; st.rerun()
                 with k9: 
-                    if st.button("3", key="k3"): st.session_state.time_buffer += "3"; st.rerun()
+                    if st.button("3", key="k3", use_container_width=True): st.session_state.time_buffer += "3"; st.rerun()
                 k0, kc, ke = st.columns(3)
                 with k0: 
-                    if st.button("0", key="k0"): st.session_state.time_buffer += "0"; st.rerun()
+                    if st.button("0", key="k0", use_container_width=True): st.session_state.time_buffer += "0"; st.rerun()
                 with kc: 
-                    if st.button("C", key="kclr"): st.session_state.time_buffer = ""; st.rerun()
+                    if st.button("C", key="kclr", use_container_width=True): st.session_state.time_buffer = ""; st.rerun()
                 with ke: 
-                    if st.button("⏎", key="kent", type="primary"):
+                    if st.button("⏎", key="kent", type="primary", use_container_width=True):
                         st.session_state.current_input_data['time'] = disp_time
                         st.session_state.scout_step = 1; st.rerun()
 
@@ -398,7 +387,7 @@ elif st.session_state.stage == 6:
             skills_jp = [("S", "サーブ"), ("R", "レセプション"), ("A", "スパイク"), ("B", "ブロック"), ("D", "ディグ"), ("E", "セット")]
             s_cols = st.columns(2)
             for i, (sk, label) in enumerate(skills_jp):
-                if s_cols[i%2].button(f"{label} ({sk})"):
+                if s_cols[i%2].button(f"{label} ({sk})", use_container_width=True):
                     st.session_state.current_input_data['skill'] = sk
                     if sk == 'S': 
                         st.session_state.current_input_data['player'] = st.session_state.rotation[0]
@@ -408,51 +397,51 @@ elif st.session_state.stage == 6:
                     elif sk == 'A': st.session_state.scout_step = 20
                     else: st.session_state.scout_step = 2
                     st.rerun()
-            if st.button("🔙 Back"): st.session_state.scout_step = 0; st.rerun()
+            if st.button("🔙 Back", use_container_width=True): st.session_state.scout_step = 0; st.rerun()
 
         elif st.session_state.scout_step == 20:
             st.markdown('<div class="step-header">2.5 Setter</div>', unsafe_allow_html=True)
             setters = get_sorted_setters()
             st_cols = st.columns(2)
             for i, s in enumerate(setters):
-                if st_cols[i%2].button(s):
+                if st_cols[i%2].button(s, use_container_width=True):
                     st.session_state.current_input_data['setter'] = s
                     count_setter_usage(s)
                     st.session_state.scout_step = 2
                     st.rerun()
-            if st.button("🔙 Back"): st.session_state.scout_step = 1; st.rerun()
+            if st.button("🔙 Back", use_container_width=True): st.session_state.scout_step = 1; st.rerun()
 
         elif st.session_state.scout_step == 2:
             st.markdown('<div class="step-header">3. Player</div>', unsafe_allow_html=True)
             candidates = get_sorted_players()
             p_cols = st.columns(2)
             for i, p in enumerate(candidates):
-                if p_cols[i%2].button(p):
+                if p_cols[i%2].button(p, use_container_width=True):
                     st.session_state.current_input_data['player'] = p
                     st.session_state.player_counts[p] = st.session_state.player_counts.get(p, 0) + 1
                     st.session_state.scout_step = 4
                     st.rerun()
             back_step = 20 if st.session_state.current_input_data.get('skill') == 'A' else 1
-            if st.button("🔙 Back"): st.session_state.scout_step = back_step; st.rerun()
+            if st.button("🔙 Back", use_container_width=True): st.session_state.scout_step = back_step; st.rerun()
 
         elif st.session_state.scout_step == 4:
             st.markdown('<div class="step-header">4. Map Input</div>', unsafe_allow_html=True)
             st.info("👈 左のコートを2回タップ (アウトボールは枠外をタップ)")
-            if st.button("Skip Map"): 
+            if st.button("Skip Map", use_container_width=True): 
                 sk = st.session_state.current_input_data.get('skill')
                 st.session_state.scout_step = 5 if sk == 'A' else 6
                 st.rerun()
-            if st.button("🔙 Back"): st.session_state.scout_step = 2; st.rerun()
+            if st.button("🔙 Back", use_container_width=True): st.session_state.scout_step = 2; st.rerun()
 
         elif st.session_state.scout_step == 5:
             st.markdown('<div class="step-header">5. Combo</div>', unsafe_allow_html=True)
             r1 = st.columns(2)
             for i, c in enumerate(FIXED_COMBOS_TOP):
-                if r1[i%2].button(c): st.session_state.current_input_data['combo'] = c; st.session_state.scout_step = 6; st.rerun()
+                if r1[i%2].button(c, use_container_width=True): st.session_state.current_input_data['combo'] = c; st.session_state.scout_step = 6; st.rerun()
             st.divider()
             r2 = st.columns(2)
             for i, c in enumerate(FIXED_COMBOS_MID):
-                if r2[i%2].button(c): st.session_state.current_input_data['combo'] = c; st.session_state.scout_step = 6; st.rerun()
+                if r2[i%2].button(c, use_container_width=True): st.session_state.current_input_data['combo'] = c; st.session_state.scout_step = 6; st.rerun()
             st.markdown("---")
             st.caption("Custom / History")
             custom_list = get_custom_combos()
@@ -460,36 +449,36 @@ elif st.session_state.stage == 6:
             if display_custom:
                 r3 = st.columns(2)
                 for i, c in enumerate(display_custom):
-                    if r3[i%2].button(c): st.session_state.current_input_data['combo'] = c; st.session_state.scout_step = 6; st.rerun()
+                    if r3[i%2].button(c, use_container_width=True): st.session_state.current_input_data['combo'] = c; st.session_state.scout_step = 6; st.rerun()
             c_val = st.text_input("Type new combo")
-            if st.button("Add & Next"):
+            if st.button("Add & Next", use_container_width=True):
                 if c_val: st.session_state.current_input_data['combo'] = c_val; st.session_state.scout_step = 6; st.rerun()
-            if st.button("🔙 Back"): st.session_state.scout_step = 4; st.rerun()
+            if st.button("🔙 Back", use_container_width=True): st.session_state.scout_step = 4; st.rerun()
 
         elif st.session_state.scout_step == 6:
             st.markdown('<div class="step-header">6. Quality</div>', unsafe_allow_html=True)
             q_cols = st.columns(2)
             with q_cols[0]:
-                if st.button("# Perfect"): commit_record("#")
-                if st.button('! OK'): commit_record('!')
-                if st.button("- ワンチ"): commit_record("-")
+                if st.button("# Perfect", use_container_width=True): commit_record("#")
+                if st.button('! OK', use_container_width=True): commit_record('!')
+                if st.button("- ワンチ", use_container_width=True): commit_record("-")
             with q_cols[1]:
-                if st.button("T BlockOut"): commit_record("T")
-                if st.button('" Good'): commit_record('"')
-                if st.button("/ Rebound"): commit_record("/")
-            if st.button("^ シャット/ミス"): commit_record("^")
+                if st.button("T BlockOut", use_container_width=True): commit_record("T")
+                if st.button('" Good', use_container_width=True): commit_record('"')
+                if st.button("/ Rebound", use_container_width=True): commit_record("/")
+            if st.button("^ シャット/ミス", use_container_width=True): commit_record("^")
             st.markdown("---")
-            if st.button("🔙 Back (Map/Combo)"):
+            if st.button("🔙 Back (Map/Combo)", use_container_width=True):
                 sk = st.session_state.current_input_data.get('skill')
                 st.session_state.scout_step = 5 if sk == 'A' else 4
                 st.session_state.points = []; st.session_state.key_map += 1; st.rerun()
 
         st.markdown("</div>", unsafe_allow_html=True)
-        if st.button("🔄 Reset Input"):
+        if st.button("🔄 Reset Input", use_container_width=True):
             st.session_state.scout_step = 0; st.session_state.points = []; st.rerun()
 
     st.markdown("### Data Log")
-    if st.button("↩️ Undo Last"): undo_last_action()
+    if st.button("↩️ Undo Last", use_container_width=True): undo_last_action()
     if len(st.session_state.data_log) > 0:
         df = pd.DataFrame(st.session_state.data_log)
         st.dataframe(df.iloc[::-1], height=150)
@@ -498,7 +487,7 @@ elif st.session_state.stage == 6:
             with st.expander("選手交代 / リベロ"):
                 out_p = st.selectbox("OUT", st.session_state.rotation)
                 in_p = st.text_input("IN Name")
-                if st.button("Change"):
+                if st.button("Change", use_container_width=True):
                     idx = st.session_state.rotation.index(out_p)
                     st.session_state.rotation[idx] = in_p
                     if in_p and in_p not in st.session_state.all_players:
