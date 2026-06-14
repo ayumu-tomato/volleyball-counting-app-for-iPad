@@ -12,7 +12,7 @@ import copy
 # ==========================================
 # 1. 設定 & CSS
 # ==========================================
-st.set_page_config(page_title="Volleyball Scouter Ver.9.4", layout="wide")
+st.set_page_config(page_title="Volleyball Scouter Ver.9.5", layout="wide")
 
 st.markdown("""
 <style>
@@ -93,7 +93,6 @@ def auto_save():
     with open(SAVE_STATE_FILE, 'w') as f: json.dump(state_data, f)
 
 def coords_to_zone(lx, ly):
-    # XY座標を従来のZone文字列に変換（互換性のため）
     if lx < 0 or lx > 9 or ly < 0 or ly > 18: return "Out"
     r = int(min(max(ly, 0), 17.99) // 3)
     c = int(min(max(lx, 0), 8.99) // 3)
@@ -101,17 +100,11 @@ def coords_to_zone(lx, ly):
     else: return str([[2,3,4], [1,6,5]][0 if ly < 13.5 else 1][c])
 
 def create_court_img(points):
-    # 余白3mを含めたサイズ比率 (15m x 24m)
     fig, ax = plt.subplots(figsize=(3.75, 6))
-    
-    # フリーゾーン (3m)
     ax.add_patch(patches.Rectangle((-3, -3), 15, 24, fc='#e0e0e0', ec='none'))
-    # コート
     ax.add_patch(patches.Rectangle((0, 0), 9, 18, fc='#FFCC99', ec='black', lw=2))
-    
     ax.plot([0,9], [9,9], c='red', lw=3)
     ax.plot([0,9], [6,6], c='black', lw=1); ax.plot([0,9], [12,12], c='black', lw=1)
-    # 外枠ライン
     ax.plot([-3,-3,12,12,-3], [-3,21,21,-3,-3], c='black', lw=2)
 
     for i, p in enumerate(points):
@@ -122,7 +115,6 @@ def create_court_img(points):
         ax.text(lx, ly, lbl, color='white', ha='center', va='center', fontweight='bold', fontsize=8)
         if i==1: 
             sx, sy = points[0][2], points[0][3]
-            # 矢印を0.85倍に短くして重なりを防ぐ
             ax.arrow(sx, sy, (lx-sx)*0.85, (ly-sy)*0.85, width=0.15, color='gray', alpha=0.5, length_includes_head=True)
             
     ax.set_xlim(-3, 12); ax.set_ylim(-3, 21); ax.axis('off')
@@ -205,7 +197,6 @@ def commit_record(quality, winner=None):
     if winner: update_score(winner)
     else:
         skill = curr.get('skill','')
-        # T(ブロックアウト)を得点扱いに追加
         if (skill in ['A','B','S'] and quality=='#') or (skill=='A' and quality=='T'): update_score('my')
         elif quality == '^': update_score('op')
         else: st.toast("Saved", icon="✅")
@@ -293,7 +284,7 @@ if st.session_state.stage < 6:
         if c2.button("Reception (Op)"): st.session_state.phase = 'R'; st.session_state.stage = 6; auto_save(); st.rerun()
 
 elif st.session_state.stage == 6:
-    c_score, c_rot = st.columns([1.5, 1])
+    c_score, c_rot = st.columns([2.0, 1.0]) # ★ スコアボード領域もマップに合わせ拡張
     with c_score:
         st.markdown(f'<div class="score-board">{st.session_state.score[0]}-{st.session_state.score[1]} ({st.session_state.phase})</div>', unsafe_allow_html=True)
         b1, b2 = st.columns(2)
@@ -305,18 +296,20 @@ elif st.session_state.stage == 6:
         st.markdown(f"""<div class="rot-grid"><div class="rot-cell rot-front">{r[3]}</div><div class="rot-cell rot-front">{r[4]}</div><div class="rot-cell rot-front">{r[5]}</div><div class="rot-cell">{r[2]}</div><div class="rot-cell">{r[1]}</div><div class="rot-cell rot-server">{r[0]}</div></div>""", unsafe_allow_html=True)
 
     st.divider()
-    col_map, col_card = st.columns([0.8, 1.5])
+    
+    # ★ 変更点: 左のマップを2.0（大幅拡大）、右のカードを1.0（1/2にスリム化）に比率変更
+    col_map, col_card = st.columns([2.0, 1.0])
     
     with col_map:
         st.markdown("**MAP (タップで着地点を記録)**")
         court_img = create_court_img(st.session_state.points)
-        # 画像サイズ: 250x400
-        val = streamlit_image_coordinates(court_img, key=f"main_court_{st.session_state.key_map}", width=250, height=400)
+        # ★ 変更点: マップ描画サイズを約1.8倍に拡張し、誤タップを防止
+        val = streamlit_image_coordinates(court_img, key=f"main_court_{st.session_state.key_map}", width=450, height=720)
         if val:
             px, py = val['x'], val['y']
-            # 画像のXY座標(ピクセル)を、15m x 24m の論理座標に変換
-            lx = -3 + (px / 250) * 15
-            ly = 21 - (py / 400) * 24
+            # ★ 変更点: 拡張した画像サイズ(450x720)に合わせてピクセル→論理座標への変換式を修正
+            lx = -3 + (px / 450) * 15
+            ly = 21 - (py / 720) * 24
             
             p = (px, py, lx, ly)
             if not st.session_state.points or st.session_state.points[-1][:2] != (px, py):
@@ -339,6 +332,7 @@ elif st.session_state.stage == 6:
             st.markdown(f"<h1 style='text-align:center; font-size:60px; margin:0;'>{disp_time}</h1>", unsafe_allow_html=True)
             c = st.container()
             with c:
+                # テンキーは狭くなっても押しやすいよう2~3列を維持
                 k1, k2, k3 = st.columns(3, gap="small")
                 with k1: 
                     if st.button("7", key="k7"): st.session_state.time_buffer += "7"; st.rerun()
@@ -372,10 +366,10 @@ elif st.session_state.stage == 6:
 
         elif st.session_state.scout_step == 1:
             st.markdown('<div class="step-header">2. Skill</div>', unsafe_allow_html=True)
-            cols = st.columns(3)
+            # ★ 変更点: 3分割のst.columnsを廃止し縦積みへ。ボタン幅が自動的にカード幅いっぱい（実質3倍幅）になります。
             skills_jp = [("S", "サーブ"), ("R", "レセプション"), ("A", "スパイク"), ("B", "ブロック"), ("D", "ディグ"), ("E", "セット")]
-            for i, (sk, label) in enumerate(skills_jp):
-                if cols[i%3].button(f"{label}\n({sk})"):
+            for sk, label in skills_jp:
+                if st.button(f"{label} ({sk})"):
                     st.session_state.current_input_data['skill'] = sk
                     if sk == 'S': 
                         st.session_state.current_input_data['player'] = st.session_state.rotation[0]
@@ -390,9 +384,9 @@ elif st.session_state.stage == 6:
         elif st.session_state.scout_step == 20:
             st.markdown('<div class="step-header">2.5 Setter</div>', unsafe_allow_html=True)
             setters = get_sorted_setters()
-            cols = st.columns(2)
-            for i, s in enumerate(setters):
-                if cols[i%2].button(s):
+            # ★ 変更点: 縦積みにしてボタンを大きく
+            for s in setters:
+                if st.button(s):
                     st.session_state.current_input_data['setter'] = s
                     count_setter_usage(s)
                     st.session_state.scout_step = 2
@@ -401,10 +395,10 @@ elif st.session_state.stage == 6:
 
         elif st.session_state.scout_step == 2:
             st.markdown('<div class="step-header">3. Player</div>', unsafe_allow_html=True)
-            cols = st.columns(2)
             candidates = st.session_state.rotation + st.session_state.liberos
-            for i, p in enumerate(candidates):
-                if cols[i%2].button(p):
+            # ★ 変更点: 縦積みにしてボタンを大きく
+            for p in candidates:
+                if st.button(p):
                     st.session_state.current_input_data['player'] = p
                     st.session_state.scout_step = 4
                     st.rerun()
@@ -422,20 +416,22 @@ elif st.session_state.stage == 6:
 
         elif st.session_state.scout_step == 5:
             st.markdown('<div class="step-header">5. Combo</div>', unsafe_allow_html=True)
-            r1 = st.columns(4)
+            # ★ 変更点: 4分割から2分割へ。ボタン幅を広げてタップしやすく
+            r1 = st.columns(2)
             for i, c in enumerate(FIXED_COMBOS_TOP):
-                if r1[i].button(c): st.session_state.current_input_data['combo'] = c; st.session_state.scout_step = 6; st.rerun()
-            r2 = st.columns(4)
+                if r1[i%2].button(c): st.session_state.current_input_data['combo'] = c; st.session_state.scout_step = 6; st.rerun()
+            st.divider()
+            r2 = st.columns(2)
             for i, c in enumerate(FIXED_COMBOS_MID):
-                if r2[i].button(c): st.session_state.current_input_data['combo'] = c; st.session_state.scout_step = 6; st.rerun()
+                if r2[i%2].button(c): st.session_state.current_input_data['combo'] = c; st.session_state.scout_step = 6; st.rerun()
             st.markdown("---")
             st.caption("Custom / History")
             custom_list = get_custom_combos()
             display_custom = [c for c in custom_list if c not in ALL_FIXED_COMBOS][:4]
             if display_custom:
-                r3 = st.columns(4)
+                r3 = st.columns(2)
                 for i, c in enumerate(display_custom):
-                    if r3[i].button(c): st.session_state.current_input_data['combo'] = c; st.session_state.scout_step = 6; st.rerun()
+                    if r3[i%2].button(c): st.session_state.current_input_data['combo'] = c; st.session_state.scout_step = 6; st.rerun()
             c_val = st.text_input("Type new combo")
             if st.button("Add & Next"):
                 if c_val: st.session_state.current_input_data['combo'] = c_val; st.session_state.scout_step = 6; st.rerun()
@@ -443,16 +439,15 @@ elif st.session_state.stage == 6:
 
         elif st.session_state.scout_step == 6:
             st.markdown('<div class="step-header">6. Quality</div>', unsafe_allow_html=True)
-            q1, q2 = st.columns(2)
-            with q1:
-                if st.button("# Perfect"): commit_record("#")
-                if st.button('! OK'): commit_record('!')
-                if st.button("/ Rebound"): commit_record("/")
-            with q2:
-                if st.button('" Good'): commit_record('"')
-                if st.button("- ワンチ"): commit_record("-")
-                if st.button("^ シャット/ミス"): commit_record("^")
+            # ★ 変更点: 品質評価もすべて1列の縦積みにして幅を最大化
+            if st.button("# Perfect"): commit_record("#")
             if st.button("T BlockOut"): commit_record("T")
+            if st.button('! OK'): commit_record('!')
+            if st.button('" Good'): commit_record('"')
+            if st.button("- ワンチ"): commit_record("-")
+            if st.button("/ Rebound"): commit_record("/")
+            if st.button("^ シャット/ミス"): commit_record("^")
+            
             st.markdown("---")
             if st.button("🔙 Back (Map/Combo)"):
                 sk = st.session_state.current_input_data.get('skill')
