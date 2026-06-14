@@ -12,18 +12,28 @@ import copy
 # ==========================================
 # 1. 設定 & CSS
 # ==========================================
-st.set_page_config(page_title="Volleyball Scouter Ver.9.6", layout="wide")
+st.set_page_config(page_title="Volleyball Scouter Ver.9.7", layout="wide")
 
 st.markdown("""
 <style>
     .block-container { padding-top: 4rem; padding-bottom: 6rem; }
+    
+    /* ★ 変更点: ボタンを3倍サイズに巨大化 */
     div.stButton > button {
-        width: 100%; height: 65px; font-weight: bold; font-size: 22px;
-        border-radius: 12px; margin-bottom: 5px; touch-action: manipulation;
+        width: 100%; 
+        height: 130px; /* 65px -> 130px に拡大 */
+        font-weight: 900; 
+        font-size: 36px; /* 22px -> 36px に拡大 */
+        border-radius: 15px; 
+        margin-bottom: 10px; 
+        touch-action: manipulation;
+        white-space: pre-wrap;
     }
-    .keypad-btn > button { height: 80px !important; font-size: 30px !important; }
+    
+    .keypad-btn > button { height: 130px !important; font-size: 45px !important; }
+    
     div.stDownloadButton > button {
-        background-color: #FF4B4B; color: white; height: 80px; font-size: 24px;
+        background-color: #FF4B4B; color: white; height: 100px; font-size: 28px;
         border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
     .score-board { font-size: 40px; font-weight: 900; text-align: center; background: #333; color: white; padding: 5px; border-radius: 8px; }
@@ -103,8 +113,18 @@ def create_court_img(points):
     fig, ax = plt.subplots(figsize=(3.75, 6))
     ax.add_patch(patches.Rectangle((-3, -3), 15, 24, fc='#e0e0e0', ec='none'))
     ax.add_patch(patches.Rectangle((0, 0), 9, 18, fc='#FFCC99', ec='black', lw=2))
-    ax.plot([0,9], [9,9], c='red', lw=3)
-    ax.plot([0,9], [6,6], c='black', lw=1); ax.plot([0,9], [12,12], c='black', lw=1)
+    
+    # ★ 変更点: 9分割用の薄い点線
+    ax.plot([3,3], [0,18], c='gray', ls=':', lw=1.5, alpha=0.5, zorder=1)
+    ax.plot([6,6], [0,18], c='gray', ls=':', lw=1.5, alpha=0.5, zorder=1)
+    ax.plot([0,9], [3,3], c='gray', ls=':', lw=1.5, alpha=0.5, zorder=1)
+    ax.plot([0,9], [15,15], c='gray', ls=':', lw=1.5, alpha=0.5, zorder=1)
+    
+    # アタックラインとセンターライン (上書きして目立たせる)
+    ax.plot([0,9], [9,9], c='red', lw=3, zorder=2)
+    ax.plot([0,9], [6,6], c='black', lw=2, zorder=2)
+    ax.plot([0,9], [12,12], c='black', lw=2, zorder=2)
+    
     ax.plot([-3,-3,12,12,-3], [-3,21,21,-3,-3], c='black', lw=2)
 
     for i, p in enumerate(points):
@@ -180,21 +200,12 @@ def commit_record(quality, winner=None):
         e_x, e_y = st.session_state.points[1][2], st.session_state.points[1][3]
         e_z = coords_to_zone(e_x, e_y)
 
-    # ==============================================================
-    # ★ 攻撃方向の判定と180度回転ロジック（データの標準化）
-    # ==============================================================
     is_bottom_to_top = False
-    
     if s_y != "" and e_y != "":
-        # 始点より終点の方がY座標が大きい（下から上への攻撃）かつ、始点が下半分にある場合
-        if s_y < e_y and s_y < 9:
-            is_bottom_to_top = True
+        if s_y < e_y and s_y < 9: is_bottom_to_top = True
     elif s_y != "" and e_y == "":
-        # サーブなど、1点しかタップしていない場合でも、下半分からのスタートなら回転対象とする
-        if s_y < 9:
-            is_bottom_to_top = True
+        if s_y < 9: is_bottom_to_top = True
 
-    # 回転処理（コートの中心 x=4.5, y=9.0 を基準に反転）
     if is_bottom_to_top:
         s_x = 9.0 - s_x
         s_y = 18.0 - s_y
@@ -203,7 +214,6 @@ def commit_record(quality, winner=None):
             e_x = 9.0 - e_x
             e_y = 18.0 - e_y
             e_z = coords_to_zone(e_x, e_y)
-    # ==============================================================
 
     final_row = {
         "set": st.session_state.set_name,
@@ -464,7 +474,7 @@ elif st.session_state.stage == 6:
             if st.button("^ シャット/ミス"): commit_record("^")
             
             st.markdown("---")
-            if st.button("🔙 Back (Map/Combo)"):
+            if st.button("🔙 Back"):
                 sk = st.session_state.current_input_data.get('skill')
                 st.session_state.scout_step = 5 if sk == 'A' else 4
                 st.session_state.points = []; st.session_state.key_map += 1; st.rerun()
