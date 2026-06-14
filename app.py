@@ -271,6 +271,11 @@ def get_custom_combos():
     sorted_c = sorted(st.session_state.custom_combo_pool.items(), key=lambda x: x[1], reverse=True)
     return [x[0] for x in sorted_c]
 
+# ★ コンビ入力(step5)が必要か: スパイク かつ Direct/Two 以外
+def needs_combo():
+    curr = st.session_state.current_input_data
+    return curr.get('skill') == 'A' and curr.get('setter') != "Direct/Two"
+
 # ==========================================
 # 3. アプリ進行フロー
 # ==========================================
@@ -391,8 +396,7 @@ elif st.session_state.stage == 6:
                 if len(st.session_state.points) < 2:
                     st.session_state.points.append(p)
                     if len(st.session_state.points) == 2 and st.session_state.scout_step == 4:
-                        skill = st.session_state.current_input_data.get('skill')
-                        st.session_state.scout_step = 5 if skill == 'A' else 6
+                        st.session_state.scout_step = 5 if needs_combo() else 6
                     st.rerun()
                 else:
                     st.session_state.points = [p]; st.rerun()
@@ -463,6 +467,9 @@ elif st.session_state.stage == 6:
                 if st_cols[i%2].button(s, use_container_width=True):
                     st.session_state.current_input_data['setter'] = s
                     count_setter_usage(s)
+                    # Direct/Two はトス経由でないのでコンビ入力をスキップ（空に）
+                    if s == "Direct/Two":
+                        st.session_state.current_input_data['combo'] = ""
                     st.session_state.scout_step = 2
                     st.rerun()
             if st.button("🔙 Back", use_container_width=True): st.session_state.scout_step = 1; st.rerun()
@@ -484,8 +491,7 @@ elif st.session_state.stage == 6:
             st.markdown('<div class="step-header">4. Map Input</div>', unsafe_allow_html=True)
             st.info("👈 左のコートを2回タップ (アウトボールは枠外をタップ)")
             if st.button("Skip Map", use_container_width=True): 
-                sk = st.session_state.current_input_data.get('skill')
-                st.session_state.scout_step = 5 if sk == 'A' else 6
+                st.session_state.scout_step = 5 if needs_combo() else 6
                 st.rerun()
             if st.button("🔙 Back", use_container_width=True): st.session_state.scout_step = 2; st.rerun()
 
@@ -525,8 +531,7 @@ elif st.session_state.stage == 6:
             if st.button("^ シャット/ミス", use_container_width=True): commit_record("^")
             st.markdown("---")
             if st.button("🔙 Back (Map/Combo)", use_container_width=True):
-                sk = st.session_state.current_input_data.get('skill')
-                st.session_state.scout_step = 5 if sk == 'A' else 4
+                st.session_state.scout_step = 5 if needs_combo() else 4
                 st.session_state.points = []; st.session_state.key_map += 1; st.rerun()
 
         st.markdown("</div>", unsafe_allow_html=True)
