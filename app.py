@@ -5,9 +5,6 @@ import matplotlib.patches as patches
 from streamlit_image_coordinates import streamlit_image_coordinates
 import io
 from PIL import Image
-import datetime
-import xlsxwriter
-import time
 import json
 import os
 import copy
@@ -15,18 +12,16 @@ import copy
 # ==========================================
 # 1. 設定 & CSS
 # ==========================================
-st.set_page_config(page_title="Volleyball Scouter Ver.9.3", layout="wide")
+st.set_page_config(page_title="Volleyball Scouter Ver.9.4", layout="wide")
 
 st.markdown("""
 <style>
     .block-container { padding-top: 4rem; padding-bottom: 6rem; }
-    
     div.stButton > button {
         width: 100%; height: 65px; font-weight: bold; font-size: 22px;
         border-radius: 12px; margin-bottom: 5px; touch-action: manipulation;
     }
     .keypad-btn > button { height: 80px !important; font-size: 30px !important; }
-    
     div.stDownloadButton > button {
         background-color: #FF4B4B; color: white; height: 80px; font-size: 24px;
         border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
@@ -41,29 +36,25 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# セッション初期化
 defaults = {
     'stage': 0, 'roster_cursor': 0, 'temp_roster': [], 'scout_step': 0,
     'set_name': '1', 'video_url': '', 'liberos': [], 'rotation': [], 'score': [0, 0], 'phase': 'R',
     'current_input_data': {}, 'data_log': [], 'points': [], 'setter_counts': {},
-    'key_map': 0, 'time_buffer': "",
-    'key_roster': 0, 'history_stack': [],
-    'custom_combo_pool': {}, # コンビ使用回数記録用
+    'key_map': 0, 'time_buffer': "", 'key_roster': 0, 'history_stack': [], 'custom_combo_pool': {},
 }
 for k, v in defaults.items():
     if k not in st.session_state: st.session_state[k] = v
 
-# 固定コンビ定義
 FIXED_COMBOS_TOP = ['V5', 'X5', 'VC', 'XC']
 FIXED_COMBOS_MID = ['Q1', 'Q3', 'B1', 'BC']
 ALL_FIXED_COMBOS = FIXED_COMBOS_TOP + FIXED_COMBOS_MID
 
-# ==========================================
-# 2. ロジック関数
-# ==========================================
 SAVE_DATA_FILE = "autosave_data.csv"
 SAVE_STATE_FILE = "autosave_state.json"
 
+# ==========================================
+# 2. ロジック関数
+# ==========================================
 def save_state_to_history():
     state_snapshot = {
         'score': copy.deepcopy(st.session_state.score),
@@ -101,61 +92,47 @@ def auto_save():
     }
     with open(SAVE_STATE_FILE, 'w') as f: json.dump(state_data, f)
 
-def load_autosave():
-    try:
-        if os.path.exists(SAVE_DATA_FILE):
-            df = pd.read_csv(SAVE_DATA_FILE)
-            st.session_state.data_log = df.to_dict('records')
-        if os.path.exists(SAVE_STATE_FILE):
-            with open(SAVE_STATE_FILE, 'r') as f:
-                d = json.load(f)
-                st.session_state.score = d["score"]; st.session_state.rotation = d["rotation"]
-                st.session_state.phase = d["phase"]; st.session_state.set_name = d["set_name"]
-                st.session_state.video_url = d["video_url"]; st.session_state.liberos = d["liberos"]
-                st.session_state.setter_counts = d["setter_counts"]; 
-                st.session_state.custom_combo_pool = d.get("custom_combo_pool", {})
-                st.session_state.stage = 6
-        st.toast("Resumed!", icon="📂"); st.rerun()
-    except Exception as e: st.error(f"Load failed: {e}")
-
-def get_zone(x, y, w, h):
-    cx, cy = (x / w) * 9, (1 - (y / h)) * 18 
-    if 0 <= cy < 9:
-        r, c = int(cy//3), int(cx//3)
-        if r==0: return [5,6,1][c]
-        if r==1: return [7,8,9][c]
-        if r==2: return [4,3,2][c]
-    elif 9 <= cy <= 18:
-        is_front = (cy < 13.5)
-        col_img = int(cx // 3)
-        if is_front: return [2,3,4][col_img]
-        else: return [1,6,5][col_img]
-    return 0
+def coords_to_zone(lx, ly):
+    # XY座標を従来のZone文字列に変換（互換性のため）
+    if lx < 0 or lx > 9 or ly < 0 or ly > 18: return "Out"
+    r = int(min(max(ly, 0), 17.99) // 3)
+    c = int(min(max(lx, 0), 8.99) // 3)
+    if r < 3: return str([[5,6,1], [7,8,9], [4,3,2]][r][c])
+    else: return str([[2,3,4], [1,6,5]][0 if ly < 13.5 else 1][c])
 
 def create_court_img(points):
-    fig, ax = plt.subplots(figsize=(3, 6))
+    # 余白3mを含めたサイズ比率 (15m x 24m)
+    fig, ax = plt.subplots(figsize=(3.75, 6))
+    
+    # フリーゾーン (3m)
+    ax.add_patch(patches.Rectangle((-3, -3), 15, 24, fc='#e0e0e0', ec='none'))
+    # コート
     ax.add_patch(patches.Rectangle((0, 0), 9, 18, fc='#FFCC99', ec='black', lw=2))
+    
     ax.plot([0,9], [9,9], c='red', lw=3)
     ax.plot([0,9], [6,6], c='black', lw=1); ax.plot([0,9], [12,12], c='black', lw=1)
-    ax.plot([0,9], [13.5, 13.5], c='gray', ls=':', lw=0.5)
-    ax.plot([3,3], [9,18], c='gray', ls=':', lw=0.5); ax.plot([6,6], [9,18], c='gray', ls=':', lw=0.5)
+    # 外枠ライン
+    ax.plot([-3,-3,12,12,-3], [-3,21,21,-3,-3], c='black', lw=2)
+
     for i, p in enumerate(points):
-        px, py = (p[0]/230)*9, (1-(p[1]/460))*18
+        lx, ly = p[2], p[3]
         col = "blue" if i==0 else "red"
         lbl = "S" if i==0 else "E"
-        ax.scatter(px, py, s=150, c=col, zorder=10, edgecolors='white')
-        ax.text(px, py, lbl, color='white', ha='center', va='center', fontweight='bold', fontsize=8)
+        ax.scatter(lx, ly, s=150, c=col, zorder=10, edgecolors='white')
+        ax.text(lx, ly, lbl, color='white', ha='center', va='center', fontweight='bold', fontsize=8)
         if i==1: 
-            sx, sy = (points[0][0]/230)*9, (1-(points[0][1]/460))*18
-            ax.arrow(sx, sy, px-sx, py-sy, width=0.15, color='gray', alpha=0.5)
-    ax.set_xlim(0, 9); ax.set_ylim(0, 18); ax.axis('off')
+            sx, sy = points[0][2], points[0][3]
+            # 矢印を0.85倍に短くして重なりを防ぐ
+            ax.arrow(sx, sy, (lx-sx)*0.85, (ly-sy)*0.85, width=0.15, color='gray', alpha=0.5, length_includes_head=True)
+            
+    ax.set_xlim(-3, 12); ax.set_ylim(-3, 21); ax.axis('off')
     buf = io.BytesIO()
     plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
     buf.seek(0)
     return Image.open(buf)
 
 def format_time(val):
-    s = str(val).strip(); 
+    s = str(val).strip()
     if len(s) == 0: return "00:00"
     v = int(s)
     if len(s) <= 2: return f"00:{v:02d}"
@@ -203,9 +180,14 @@ def commit_record(quality, winner=None):
         count_custom_combo(curr.get('combo', ''))
 
     s_z, e_z = "", ""
-    if len(st.session_state.points)>=1: s_z = get_zone(st.session_state.points[0][0], st.session_state.points[0][1], 230, 460)
-    if len(st.session_state.points)>=2: e_z = get_zone(st.session_state.points[1][0], st.session_state.points[1][1], 230, 460)
-    
+    s_x, s_y, e_x, e_y = "", "", "", ""
+    if len(st.session_state.points) >= 1: 
+        s_x, s_y = st.session_state.points[0][2], st.session_state.points[0][3]
+        s_z = coords_to_zone(s_x, s_y)
+    if len(st.session_state.points) >= 2: 
+        e_x, e_y = st.session_state.points[1][2], st.session_state.points[1][3]
+        e_z = coords_to_zone(e_x, e_y)
+        
     final_row = {
         "set": st.session_state.set_name,
         "score": f"{st.session_state.score[0]}-{st.session_state.score[1]}",
@@ -214,6 +196,7 @@ def commit_record(quality, winner=None):
         "skill": curr.get('skill',''), "combo": curr.get('combo',''),
         "quality": quality,
         "start_zone": s_z, "end_zone": e_z,
+        "start_x": s_x, "start_y": s_y, "end_x": e_x, "end_y": e_y,
         "memo": "", "video_url": st.session_state.video_url,
         "video_time": time_to_sec(curr.get('time',''))
     }
@@ -222,6 +205,7 @@ def commit_record(quality, winner=None):
     if winner: update_score(winner)
     else:
         skill = curr.get('skill','')
+        # T(ブロックアウト)を得点扱いに追加
         if (skill in ['A','B','S'] and quality=='#') or (skill=='A' and quality=='T'): update_score('my')
         elif quality == '^': update_score('op')
         else: st.toast("Saved", icon="✅")
@@ -246,12 +230,25 @@ def get_custom_combos():
 # ==========================================
 # 3. アプリ進行フロー
 # ==========================================
-
 with st.sidebar:
     st.header("💾 Save Data")
     if os.path.exists(SAVE_STATE_FILE):
         st.info("前回のデータが見つかりました")
-        if st.button("📂 続きから再開"): load_autosave()
+        if st.button("📂 続きから再開"):
+            try:
+                if os.path.exists(SAVE_DATA_FILE):
+                    df = pd.read_csv(SAVE_DATA_FILE)
+                    st.session_state.data_log = df.to_dict('records')
+                with open(SAVE_STATE_FILE, 'r') as f:
+                    d = json.load(f)
+                    st.session_state.score = d["score"]; st.session_state.rotation = d["rotation"]
+                    st.session_state.phase = d["phase"]; st.session_state.set_name = d["set_name"]
+                    st.session_state.video_url = d["video_url"]; st.session_state.liberos = d["liberos"]
+                    st.session_state.setter_counts = d["setter_counts"]; 
+                    st.session_state.custom_combo_pool = d.get("custom_combo_pool", {})
+                    st.session_state.stage = 6
+                st.toast("Resumed!", icon="📂"); st.rerun()
+            except Exception as e: st.error(f"Load failed: {e}")
     else: st.caption("保存されたデータはありません")
 
 if st.session_state.stage < 6:
@@ -311,15 +308,20 @@ elif st.session_state.stage == 6:
     col_map, col_card = st.columns([0.8, 1.5])
     
     with col_map:
-        st.markdown("**MAP**")
+        st.markdown("**MAP (タップで着地点を記録)**")
         court_img = create_court_img(st.session_state.points)
-        val = streamlit_image_coordinates(court_img, key=f"main_court_{st.session_state.key_map}", width=230, height=460)
+        # 画像サイズ: 250x400
+        val = streamlit_image_coordinates(court_img, key=f"main_court_{st.session_state.key_map}", width=250, height=400)
         if val:
-            p = (val['x'], val['y'])
-            if not st.session_state.points or st.session_state.points[-1] != p:
+            px, py = val['x'], val['y']
+            # 画像のXY座標(ピクセル)を、15m x 24m の論理座標に変換
+            lx = -3 + (px / 250) * 15
+            ly = 21 - (py / 400) * 24
+            
+            p = (px, py, lx, ly)
+            if not st.session_state.points or st.session_state.points[-1][:2] != (px, py):
                 if len(st.session_state.points) < 2:
                     st.session_state.points.append(p)
-                    # ★修正: マップ2点入力後、SkillがAならCombo(5)へ、それ以外ならQuality(6)へ
                     if len(st.session_state.points) == 2 and st.session_state.scout_step == 4:
                         skill = st.session_state.current_input_data.get('skill')
                         st.session_state.scout_step = 5 if skill == 'A' else 6
@@ -337,34 +339,34 @@ elif st.session_state.stage == 6:
             st.markdown(f"<h1 style='text-align:center; font-size:60px; margin:0;'>{disp_time}</h1>", unsafe_allow_html=True)
             c = st.container()
             with c:
-                k1, k2, k3 = st.columns([1,1,1], gap="small")
+                k1, k2, k3 = st.columns(3, gap="small")
                 with k1: 
-                    if st.button("7", key="k7", use_container_width=True): st.session_state.time_buffer += "7"; st.rerun()
+                    if st.button("7", key="k7"): st.session_state.time_buffer += "7"; st.rerun()
                 with k2: 
-                    if st.button("8", key="k8", use_container_width=True): st.session_state.time_buffer += "8"; st.rerun()
+                    if st.button("8", key="k8"): st.session_state.time_buffer += "8"; st.rerun()
                 with k3: 
-                    if st.button("9", key="k9", use_container_width=True): st.session_state.time_buffer += "9"; st.rerun()
-                k4, k5, k6 = st.columns([1,1,1], gap="small")
+                    if st.button("9", key="k9"): st.session_state.time_buffer += "9"; st.rerun()
+                k4, k5, k6 = st.columns(3, gap="small")
                 with k4: 
-                    if st.button("4", key="k4", use_container_width=True): st.session_state.time_buffer += "4"; st.rerun()
+                    if st.button("4", key="k4"): st.session_state.time_buffer += "4"; st.rerun()
                 with k5: 
-                    if st.button("5", key="k5", use_container_width=True): st.session_state.time_buffer += "5"; st.rerun()
+                    if st.button("5", key="k5"): st.session_state.time_buffer += "5"; st.rerun()
                 with k6: 
-                    if st.button("6", key="k6", use_container_width=True): st.session_state.time_buffer += "6"; st.rerun()
-                k7, k8, k9 = st.columns([1,1,1], gap="small")
+                    if st.button("6", key="k6"): st.session_state.time_buffer += "6"; st.rerun()
+                k7, k8, k9 = st.columns(3, gap="small")
                 with k7: 
-                    if st.button("1", key="k1", use_container_width=True): st.session_state.time_buffer += "1"; st.rerun()
+                    if st.button("1", key="k1"): st.session_state.time_buffer += "1"; st.rerun()
                 with k8: 
-                    if st.button("2", key="k2", use_container_width=True): st.session_state.time_buffer += "2"; st.rerun()
+                    if st.button("2", key="k2"): st.session_state.time_buffer += "2"; st.rerun()
                 with k9: 
-                    if st.button("3", key="k3", use_container_width=True): st.session_state.time_buffer += "3"; st.rerun()
-                k0, kc, ke = st.columns([1,1,1], gap="small")
+                    if st.button("3", key="k3"): st.session_state.time_buffer += "3"; st.rerun()
+                k0, kc, ke = st.columns(3, gap="small")
                 with k0: 
-                    if st.button("0", key="k0", use_container_width=True): st.session_state.time_buffer += "0"; st.rerun()
+                    if st.button("0", key="k0"): st.session_state.time_buffer += "0"; st.rerun()
                 with kc: 
-                    if st.button("C", key="kclr", use_container_width=True): st.session_state.time_buffer = ""; st.rerun()
+                    if st.button("C", key="kclr"): st.session_state.time_buffer = ""; st.rerun()
                 with ke: 
-                    if st.button("⏎", key="kent", use_container_width=True, type="primary"):
+                    if st.button("⏎", key="kent", type="primary"):
                         st.session_state.current_input_data['time'] = disp_time
                         st.session_state.scout_step = 1; st.rerun()
 
@@ -411,7 +413,7 @@ elif st.session_state.stage == 6:
 
         elif st.session_state.scout_step == 4:
             st.markdown('<div class="step-header">4. Map Input</div>', unsafe_allow_html=True)
-            st.info("👈 左のコートを2回タップ")
+            st.info("👈 左のコートを2回タップ (アウトボールは枠外をタップ)")
             if st.button("Skip Map"): 
                 sk = st.session_state.current_input_data.get('skill')
                 st.session_state.scout_step = 5 if sk == 'A' else 6
@@ -444,12 +446,12 @@ elif st.session_state.stage == 6:
             q1, q2 = st.columns(2)
             with q1:
                 if st.button("# Perfect"): commit_record("#")
-                if st.button("! OK"): commit_record("!")
+                if st.button('! OK'): commit_record('!')
                 if st.button("/ Rebound"): commit_record("/")
             with q2:
                 if st.button('" Good'): commit_record('"')
-                if st.button("- Poor"): commit_record("-")
-                if st.button("^ Error"): commit_record("^")
+                if st.button("- ワンチ"): commit_record("-")
+                if st.button("^ シャット/ミス"): commit_record("^")
             if st.button("T BlockOut"): commit_record("T")
             st.markdown("---")
             if st.button("🔙 Back (Map/Combo)"):
