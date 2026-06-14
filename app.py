@@ -7,6 +7,7 @@ import io
 from PIL import Image
 import json
 import os
+import glob
 import copy
 
 st.set_page_config(page_title="Volleyball Scouter Ver.9.10", layout="wide")
@@ -45,6 +46,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 defaults = {
+    'game_id': '',
     'stage': 0, 'roster_cursor': 0, 'temp_roster': [], 'scout_step': 0,
     'set_name': '1', 'video_url': '', 'liberos': [], 'rotation': [], 'score': [0, 0], 'phase': 'R',
     'current_input_data': {}, 'data_log': [], 'points': [], 
@@ -58,8 +60,39 @@ FIXED_COMBOS_TOP = ['V5', 'X5', 'VC', 'XC']
 FIXED_COMBOS_MID = ['Q1', 'Q3', 'B1', 'BC']
 ALL_FIXED_COMBOS = FIXED_COMBOS_TOP + FIXED_COMBOS_MID
 
-SAVE_DATA_FILE = "autosave_data.csv"
-SAVE_STATE_FILE = "autosave_state.json"
+# ★ ID別のファイル名を返す（複数人が同時に別IDで作業できる）
+def data_file():
+    return f"autosave_data_{st.session_state.game_id}.csv"
+
+def state_file():
+    return f"autosave_state_{st.session_state.game_id}.json"
+
+# ★ ゲーム関連のセッション状態をデフォルトに戻す（game_id以外）
+def reset_session():
+    for k, v in defaults.items():
+        if k == 'game_id':
+            continue
+        st.session_state[k] = copy.deepcopy(v)
+
+# ★ 現在のIDの保存ファイルがあれば読み込む。成功でTrue
+def load_game():
+    sf = state_file()
+    if not os.path.exists(sf):
+        return False
+    if os.path.exists(data_file()):
+        df = pd.read_csv(data_file())
+        st.session_state.data_log = df.to_dict('records')
+    with open(sf, 'r') as f:
+        d = json.load(f)
+    st.session_state.score = d["score"]; st.session_state.rotation = d["rotation"]
+    st.session_state.phase = d["phase"]; st.session_state.set_name = d["set_name"]
+    st.session_state.video_url = d["video_url"]; st.session_state.liberos = d["liberos"]
+    st.session_state.setter_counts = d.get("setter_counts", {})
+    st.session_state.player_counts = d.get("player_counts", {})
+    st.session_state.all_players = d.get("all_players", [p for p in d["rotation"] + d["liberos"] if p])
+    st.session_state.custom_combo_pool = d.get("custom_combo_pool", {})
+    st.session_state.stage = 6
+    return True
 
 def save_state_to_history():
     state_snapshot = {
@@ -91,8 +124,10 @@ def undo_last_action():
     st.rerun()
 
 def auto_save():
+    if not st.session_state.game_id:
+        return  # IDが未設定なら保存しない
     if len(st.session_state.data_log) > 0:
-        pd.DataFrame(st.session_state.data_log).to_csv(SAVE_DATA_FILE, index=False)
+        pd.DataFrame(st.session_state.data_log).to_csv(data_file(), index=False)
     state_data = {
         "score": st.session_state.score, "rotation": st.session_state.rotation, "phase": st.session_state.phase,
         "set_name": st.session_state.set_name, "video_url": st.session_state.video_url, "liberos": st.session_state.liberos,
@@ -100,7 +135,7 @@ def auto_save():
         "all_players": st.session_state.all_players,
         "custom_combo_pool": st.session_state.custom_combo_pool, "stage": st.session_state.stage
     }
-    with open(SAVE_STATE_FILE, 'w') as f: json.dump(state_data, f)
+    with open(state_file(), 'w') as f: json.dump(state_data, f)
 
 def coords_to_zone(lx, ly):
     if lx < 0 or lx > 9 or ly < 0 or ly > 18: return "Out"
@@ -240,27 +275,48 @@ def get_custom_combos():
 # 3. アプリ進行フロー
 # ==========================================
 with st.sidebar:
-    st.header("💾 Save Data")
-    if os.path.exists(SAVE_STATE_FILE):
-        st.info("前回のデータが見つかりました")
-        if st.button("📂 続きから再開", use_container_width=True):
-            try:
-                if os.path.exists(SAVE_DATA_FILE):
-                    df = pd.read_csv(SAVE_DATA_FILE)
-                    st.session_state.data_log = df.to_dict('records')
-                with open(SAVE_STATE_FILE, 'r') as f:
-                    d = json.load(f)
-                    st.session_state.score = d["score"]; st.session_state.rotation = d["rotation"]
-                    st.session_state.phase = d["phase"]; st.session_state.set_name = d["set_name"]
-                    st.session_state.video_url = d["video_url"]; st.session_state.liberos = d["liberos"]
-                    st.session_state.setter_counts = d.get("setter_counts", {}) 
-                    st.session_state.player_counts = d.get("player_counts", {})
-                    st.session_state.all_players = d.get("all_players", [p for p in d["rotation"] + d["liberos"] if p]) 
-                    st.session_state.custom_combo_pool = d.get("custom_combo_pool", {})
-                    st.session_state.stage = 6
-                st.toast("Resumed!", icon="📂"); st.rerun()
-            except Exception as e: st.error(f"Load failed: {e}")
-    else: st.caption("保存されたデータはありません")
+    st.header("🔑 解析ID")
+    if st.session_state.game_id:
+        st.success(f"現在のID: **{st.session_state.game_id}**")
+        st.caption("このIDに紐づくデータが随時保存されます")
+        if st.button("🔄 ID変更 / 別の試合へ", use_container_width=True):
+            reset_session()
+            st.session_state.game_id = ''
+            st.rerun()
+    else:
+        st.caption("最初にIDを入力してください")
+
+# ★ IDゲート: game_idが未設定なら、ID入力画面を表示してここで止める
+if not st.session_state.game_id:
+    st.title("🔑 解析IDを入力")
+    st.caption("5桁の数字IDを入力してください。複数人で解析する場合は各自で別のIDを使います。")
+    id_val = st.text_input("ID (5桁)", max_chars=5, placeholder="例: 12345")
+    if st.button("▶️ 開始 / 再開", use_container_width=True):
+        if len(id_val) == 5 and id_val.isdigit():
+            st.session_state.game_id = id_val
+            if load_game():
+                st.toast("続きから再開しました", icon="📂")
+            else:
+                st.session_state.stage = 0  # 新規セットアップ
+                st.toast("新しい試合を開始します", icon="🆕")
+            st.rerun()
+        else:
+            st.error("5桁の数字を入力してください")
+
+    # 既存の保存データをワンタップで再開
+    existing = sorted(glob.glob("autosave_state_*.json"))
+    saved_ids = [os.path.basename(p)[len("autosave_state_"):-len(".json")] for p in existing]
+    if saved_ids:
+        st.markdown("---")
+        st.subheader("保存済みデータから再開")
+        cols = st.columns(3)
+        for i, sid in enumerate(saved_ids):
+            if cols[i % 3].button(f"ID {sid}", key=f"resume_{sid}", use_container_width=True):
+                st.session_state.game_id = sid
+                load_game()
+                st.toast(f"ID {sid} を再開", icon="📂")
+                st.rerun()
+    st.stop()
 
 if st.session_state.stage < 6:
     st.title("🛠️ Game Setup")
