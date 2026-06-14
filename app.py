@@ -12,33 +12,40 @@ import copy
 # ==========================================
 # 1. 設定 & CSS
 # ==========================================
-st.set_page_config(page_title="Volleyball Scouter Ver.9.7", layout="wide")
+st.set_page_config(page_title="Volleyball Scouter Ver.9.9", layout="wide")
 
 st.markdown("""
 <style>
     .block-container { padding-top: 4rem; padding-bottom: 6rem; }
     
-    /* ★ 変更点: ボタンを3倍サイズに巨大化 */
-    div.stButton > button {
-        width: 100%; 
-        height: 130px; /* 65px -> 130px に拡大 */
-        font-weight: 900; 
-        font-size: 36px; /* 22px -> 36px に拡大 */
-        border-radius: 15px; 
-        margin-bottom: 10px; 
-        touch-action: manipulation;
-        white-space: pre-wrap;
+    /* ★ 変更点: Streamlitデフォルトの余白を極限まで削る */
+    div[data-testid="stHorizontalBlock"] {
+        gap: 4px !important; /* カラム（横）の隙間を最小化 */
+    }
+    div.stButton {
+        margin-bottom: 4px !important; /* ボタン（縦）の隙間を最小化 */
     }
     
-    .keypad-btn > button { height: 130px !important; font-size: 45px !important; }
+    div.stButton > button {
+        width: 100%; 
+        height: 75px; /* 縦幅は高すぎない適正サイズに戻す */
+        font-weight: 900; 
+        font-size: 24px; 
+        border-radius: 8px; 
+        margin: 0 !important; 
+        padding: 0 !important;
+        touch-action: manipulation;
+    }
+    
+    .keypad-btn > button { height: 80px !important; font-size: 32px !important; }
     
     div.stDownloadButton > button {
-        background-color: #FF4B4B; color: white; height: 100px; font-size: 28px;
+        background-color: #FF4B4B; color: white; height: 80px; font-size: 24px;
         border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
     .score-board { font-size: 40px; font-weight: 900; text-align: center; background: #333; color: white; padding: 5px; border-radius: 8px; }
     .input-card { background-color: #f8f9fa; padding: 10px; border-radius: 15px; border: 2px solid #e9ecef; }
-    .step-header { font-size: 20px; font-weight: bold; color: #4c78a8; margin-bottom: 10px; border-bottom: 2px solid #4c78a8; }
+    .step-header { font-size: 20px; font-weight: bold; color: #4c78a8; margin-bottom: 5px; border-bottom: 2px solid #4c78a8; }
     .rot-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; text-align: center; font-weight: bold; font-size: 14px; }
     .rot-cell { border: 1px solid #555; padding: 8px; background: white; border-radius: 6px; }
     .rot-front { background: #ffebeb; }
@@ -114,13 +121,13 @@ def create_court_img(points):
     ax.add_patch(patches.Rectangle((-3, -3), 15, 24, fc='#e0e0e0', ec='none'))
     ax.add_patch(patches.Rectangle((0, 0), 9, 18, fc='#FFCC99', ec='black', lw=2))
     
-    # ★ 変更点: 9分割用の薄い点線
+    # 9分割用の薄い点線
     ax.plot([3,3], [0,18], c='gray', ls=':', lw=1.5, alpha=0.5, zorder=1)
     ax.plot([6,6], [0,18], c='gray', ls=':', lw=1.5, alpha=0.5, zorder=1)
     ax.plot([0,9], [3,3], c='gray', ls=':', lw=1.5, alpha=0.5, zorder=1)
     ax.plot([0,9], [15,15], c='gray', ls=':', lw=1.5, alpha=0.5, zorder=1)
     
-    # アタックラインとセンターライン (上書きして目立たせる)
+    # アタックラインとセンターライン
     ax.plot([0,9], [9,9], c='red', lw=3, zorder=2)
     ax.plot([0,9], [6,6], c='black', lw=2, zorder=2)
     ax.plot([0,9], [12,12], c='black', lw=2, zorder=2)
@@ -319,7 +326,8 @@ if st.session_state.stage < 6:
         if c2.button("Reception (Op)"): st.session_state.phase = 'R'; st.session_state.stage = 6; auto_save(); st.rerun()
 
 elif st.session_state.stage == 6:
-    c_score, c_rot = st.columns([2.0, 1.0])
+    # ★ マップを2.0に戻して大きくする
+    c_score, c_rot = st.columns([2.0, 1.0]) 
     with c_score:
         st.markdown(f'<div class="score-board">{st.session_state.score[0]}-{st.session_state.score[1]} ({st.session_state.phase})</div>', unsafe_allow_html=True)
         b1, b2 = st.columns(2)
@@ -331,6 +339,7 @@ elif st.session_state.stage == 6:
         st.markdown(f"""<div class="rot-grid"><div class="rot-cell rot-front">{r[3]}</div><div class="rot-cell rot-front">{r[4]}</div><div class="rot-cell rot-front">{r[5]}</div><div class="rot-cell">{r[2]}</div><div class="rot-cell">{r[1]}</div><div class="rot-cell rot-server">{r[0]}</div></div>""", unsafe_allow_html=True)
 
     st.divider()
+    
     col_map, col_card = st.columns([2.0, 1.0])
     
     with col_map:
@@ -357,34 +366,36 @@ elif st.session_state.stage == 6:
 
     with col_card:
         st.markdown('<div class="input-card">', unsafe_allow_html=True)
+        
+        # ★ ボタンを2列（隙間ゼロ）に敷き詰めて横幅を稼ぐ
         if st.session_state.scout_step == 0:
             st.markdown('<div class="step-header">1. Time</div>', unsafe_allow_html=True)
             disp_time = format_time(st.session_state.time_buffer)
             st.markdown(f"<h1 style='text-align:center; font-size:60px; margin:0;'>{disp_time}</h1>", unsafe_allow_html=True)
             c = st.container()
             with c:
-                k1, k2, k3 = st.columns(3, gap="small")
+                k1, k2, k3 = st.columns(3)
                 with k1: 
                     if st.button("7", key="k7"): st.session_state.time_buffer += "7"; st.rerun()
                 with k2: 
                     if st.button("8", key="k8"): st.session_state.time_buffer += "8"; st.rerun()
                 with k3: 
                     if st.button("9", key="k9"): st.session_state.time_buffer += "9"; st.rerun()
-                k4, k5, k6 = st.columns(3, gap="small")
+                k4, k5, k6 = st.columns(3)
                 with k4: 
                     if st.button("4", key="k4"): st.session_state.time_buffer += "4"; st.rerun()
                 with k5: 
                     if st.button("5", key="k5"): st.session_state.time_buffer += "5"; st.rerun()
                 with k6: 
                     if st.button("6", key="k6"): st.session_state.time_buffer += "6"; st.rerun()
-                k7, k8, k9 = st.columns(3, gap="small")
+                k7, k8, k9 = st.columns(3)
                 with k7: 
                     if st.button("1", key="k1"): st.session_state.time_buffer += "1"; st.rerun()
                 with k8: 
                     if st.button("2", key="k2"): st.session_state.time_buffer += "2"; st.rerun()
                 with k9: 
                     if st.button("3", key="k3"): st.session_state.time_buffer += "3"; st.rerun()
-                k0, kc, ke = st.columns(3, gap="small")
+                k0, kc, ke = st.columns(3)
                 with k0: 
                     if st.button("0", key="k0"): st.session_state.time_buffer += "0"; st.rerun()
                 with kc: 
@@ -397,8 +408,9 @@ elif st.session_state.stage == 6:
         elif st.session_state.scout_step == 1:
             st.markdown('<div class="step-header">2. Skill</div>', unsafe_allow_html=True)
             skills_jp = [("S", "サーブ"), ("R", "レセプション"), ("A", "スパイク"), ("B", "ブロック"), ("D", "ディグ"), ("E", "セット")]
-            for sk, label in skills_jp:
-                if st.button(f"{label} ({sk})"):
+            s_cols = st.columns(2)
+            for i, (sk, label) in enumerate(skills_jp):
+                if s_cols[i%2].button(f"{label} ({sk})"):
                     st.session_state.current_input_data['skill'] = sk
                     if sk == 'S': 
                         st.session_state.current_input_data['player'] = st.session_state.rotation[0]
@@ -413,8 +425,9 @@ elif st.session_state.stage == 6:
         elif st.session_state.scout_step == 20:
             st.markdown('<div class="step-header">2.5 Setter</div>', unsafe_allow_html=True)
             setters = get_sorted_setters()
-            for s in setters:
-                if st.button(s):
+            st_cols = st.columns(2)
+            for i, s in enumerate(setters):
+                if st_cols[i%2].button(s):
                     st.session_state.current_input_data['setter'] = s
                     count_setter_usage(s)
                     st.session_state.scout_step = 2
@@ -424,8 +437,9 @@ elif st.session_state.stage == 6:
         elif st.session_state.scout_step == 2:
             st.markdown('<div class="step-header">3. Player</div>', unsafe_allow_html=True)
             candidates = st.session_state.rotation + st.session_state.liberos
-            for p in candidates:
-                if st.button(p):
+            p_cols = st.columns(2)
+            for i, p in enumerate(candidates):
+                if p_cols[i%2].button(p):
                     st.session_state.current_input_data['player'] = p
                     st.session_state.scout_step = 4
                     st.rerun()
@@ -465,16 +479,19 @@ elif st.session_state.stage == 6:
 
         elif st.session_state.scout_step == 6:
             st.markdown('<div class="step-header">6. Quality</div>', unsafe_allow_html=True)
-            if st.button("# Perfect"): commit_record("#")
-            if st.button("T BlockOut"): commit_record("T")
-            if st.button('! OK'): commit_record('!')
-            if st.button('" Good'): commit_record('"')
-            if st.button("- ワンチ"): commit_record("-")
-            if st.button("/ Rebound"): commit_record("/")
+            q_cols = st.columns(2)
+            with q_cols[0]:
+                if st.button("# Perfect"): commit_record("#")
+                if st.button('! OK'): commit_record('!')
+                if st.button("- ワンチ"): commit_record("-")
+            with q_cols[1]:
+                if st.button("T BlockOut"): commit_record("T")
+                if st.button('" Good'): commit_record('"')
+                if st.button("/ Rebound"): commit_record("/")
             if st.button("^ シャット/ミス"): commit_record("^")
             
             st.markdown("---")
-            if st.button("🔙 Back"):
+            if st.button("🔙 Back (Map/Combo)"):
                 sk = st.session_state.current_input_data.get('skill')
                 st.session_state.scout_step = 5 if sk == 'A' else 4
                 st.session_state.points = []; st.session_state.key_map += 1; st.rerun()
