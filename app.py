@@ -18,20 +18,19 @@ st.markdown("""
 <style>
     .block-container { padding-top: 4rem; padding-bottom: 6rem; }
     
-    /* ★ 変更点: Streamlitデフォルトの余白を極限まで削る */
     div[data-testid="stHorizontalBlock"] {
-        gap: 4px !important; /* カラム（横）の隙間を最小化 */
+        gap: 0px !important;
     }
     div.stButton {
-        margin-bottom: 4px !important; /* ボタン（縦）の隙間を最小化 */
+        margin-bottom: 0px !important;
     }
     
     div.stButton > button {
         width: 100%; 
-        height: 75px; /* 縦幅は高すぎない適正サイズに戻す */
+        height: 75px;
         font-weight: 900; 
         font-size: 24px; 
-        border-radius: 8px; 
+        border-radius: 4px; 
         margin: 0 !important; 
         padding: 0 !important;
         touch-action: manipulation;
@@ -121,13 +120,11 @@ def create_court_img(points):
     ax.add_patch(patches.Rectangle((-3, -3), 15, 24, fc='#e0e0e0', ec='none'))
     ax.add_patch(patches.Rectangle((0, 0), 9, 18, fc='#FFCC99', ec='black', lw=2))
     
-    # 9分割用の薄い点線
     ax.plot([3,3], [0,18], c='gray', ls=':', lw=1.5, alpha=0.5, zorder=1)
     ax.plot([6,6], [0,18], c='gray', ls=':', lw=1.5, alpha=0.5, zorder=1)
     ax.plot([0,9], [3,3], c='gray', ls=':', lw=1.5, alpha=0.5, zorder=1)
     ax.plot([0,9], [15,15], c='gray', ls=':', lw=1.5, alpha=0.5, zorder=1)
     
-    # アタックラインとセンターライン
     ax.plot([0,9], [9,9], c='red', lw=3, zorder=2)
     ax.plot([0,9], [6,6], c='black', lw=2, zorder=2)
     ax.plot([0,9], [12,12], c='black', lw=2, zorder=2)
@@ -326,7 +323,6 @@ if st.session_state.stage < 6:
         if c2.button("Reception (Op)"): st.session_state.phase = 'R'; st.session_state.stage = 6; auto_save(); st.rerun()
 
 elif st.session_state.stage == 6:
-    # ★ マップを2.0に戻して大きくする
     c_score, c_rot = st.columns([2.0, 1.0]) 
     with c_score:
         st.markdown(f'<div class="score-board">{st.session_state.score[0]}-{st.session_state.score[1]} ({st.session_state.phase})</div>', unsafe_allow_html=True)
@@ -367,7 +363,6 @@ elif st.session_state.stage == 6:
     with col_card:
         st.markdown('<div class="input-card">', unsafe_allow_html=True)
         
-        # ★ ボタンを2列（隙間ゼロ）に敷き詰めて横幅を稼ぐ
         if st.session_state.scout_step == 0:
             st.markdown('<div class="step-header">1. Time</div>', unsafe_allow_html=True)
             disp_time = format_time(st.session_state.time_buffer)
