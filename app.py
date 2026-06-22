@@ -363,7 +363,7 @@ if st.session_state.stage < 6:
     elif st.session_state.stage == 3:
         st.subheader("Step 4: Confirm")
         r = st.session_state.temp_roster
-        st.markdown(f"""<div class="rot-grid"><div class="rot-cell rot-front">4: {r[3]}</div><div class="rot-cell rot-front">3: {r[4]}</div><div class="rot-cell rot-front">2: {r[5]}</div><div class="rot-cell">5: {r[2]}</div><div class="rot-cell">6: {r[1]}</div><div class="rot-cell rot-server">1: {r[0]}</div></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="rot-grid"><div class="rot-cell rot-front">④ {r[3]}</div><div class="rot-cell rot-front">③ {r[4]}</div><div class="rot-cell rot-front">② {r[5]}</div><div class="rot-cell">⑤ {r[2]}</div><div class="rot-cell">⑥ {r[1]}</div><div class="rot-cell rot-server">① {r[0]}</div></div>""", unsafe_allow_html=True)
         c1, c2 = st.columns(2)
         if c1.button("OK", use_container_width=True): st.session_state.rotation = st.session_state.temp_roster; st.session_state.stage = 4; auto_save(); st.rerun()
         if c2.button("Retry", use_container_width=True): st.session_state.stage = 2; st.session_state.roster_cursor = 0; st.session_state.temp_roster = []; st.rerun()
@@ -390,7 +390,7 @@ elif st.session_state.stage == 6:
         if b2.button("Op Point (+1)", use_container_width=True): save_state_to_history(); update_score('op'); auto_save(); st.rerun()
     with c_rot:
         r = st.session_state.rotation
-        st.markdown(f"""<div class="rot-grid"><div class="rot-cell rot-front">{r[3]}</div><div class="rot-cell rot-front">{r[4]}</div><div class="rot-cell rot-front">{r[5]}</div><div class="rot-cell">{r[2]}</div><div class="rot-cell">{r[1]}</div><div class="rot-cell rot-server">{r[0]}</div></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="rot-grid"><div class="rot-cell rot-front">④ {r[3]}</div><div class="rot-cell rot-front">③ {r[4]}</div><div class="rot-cell rot-front">② {r[5]}</div><div class="rot-cell">⑤ {r[2]}</div><div class="rot-cell">⑥ {r[1]}</div><div class="rot-cell rot-server">① {r[0]}</div></div>""", unsafe_allow_html=True)
 
     st.divider()
     
@@ -585,10 +585,10 @@ elif st.session_state.stage == 6:
     # ★ 予備機能: ローテがずれた時の手動補正
     st.divider()
     with st.expander("🔧 予備機能（ローテ手動補正）"):
-        st.caption("ローテが途中でずれてしまった時の応急処置です。スコアは変えずにローテーションだけ1つ回します。")
+        st.caption("ローテが途中でずれてしまった時の応急処置です。スコアは変えずにローテーションだけ1つ回します。①〜⑥はコート上のローテ位置（背番号ではありません）。")
         cur = st.session_state.rotation
         if len(cur) >= 6:
-            st.markdown(f"""<div class="rot-grid"><div class="rot-cell rot-front">4: {cur[3]}</div><div class="rot-cell rot-front">3: {cur[4]}</div><div class="rot-cell rot-front">2: {cur[5]}</div><div class="rot-cell">5: {cur[2]}</div><div class="rot-cell">6: {cur[1]}</div><div class="rot-cell rot-server">1: {cur[0]}</div></div>""", unsafe_allow_html=True)
+            st.markdown(f"""<div class="rot-grid"><div class="rot-cell rot-front">④ {cur[3]}</div><div class="rot-cell rot-front">③ {cur[4]}</div><div class="rot-cell rot-front">② {cur[5]}</div><div class="rot-cell">⑤ {cur[2]}</div><div class="rot-cell">⑥ {cur[1]}</div><div class="rot-cell rot-server">① {cur[0]}</div></div>""", unsafe_allow_html=True)
         if st.button("🔄 ローテを一つ回す", use_container_width=True):
             save_state_to_history()
             rotate_team()
