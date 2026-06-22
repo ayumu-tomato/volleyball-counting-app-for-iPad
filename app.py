@@ -246,6 +246,8 @@ def commit_record(quality, winner=None):
         "memo": "", "video_url": st.session_state.video_url,
         "video_time": time_to_sec(curr.get('time',''))
     }
+    # ★ その時点のローテにおけるポジション1〜6の選手名を右端に追加（回転前に取得）
+    final_row.update(get_positions())
     st.session_state.data_log.append(final_row)
     if winner: update_score(winner)
     else:
@@ -275,6 +277,17 @@ def get_custom_combos():
 def needs_combo():
     curr = st.session_state.current_input_data
     return curr.get('skill') == 'A' and curr.get('setter') != "Direct/Two"
+
+# ★ 現ローテにおける各ポジション(1〜6)の選手名を返す
+def get_positions():
+    r = st.session_state.rotation
+    if len(r) < 6:
+        return {f"pos{i}": "" for i in range(1, 7)}
+    # 配列index → コートポジション: r[0]=P1, r[5]=P2, r[4]=P3, r[3]=P4, r[2]=P5, r[1]=P6
+    return {
+        "pos1": r[0], "pos2": r[5], "pos3": r[4],
+        "pos4": r[3], "pos5": r[2], "pos6": r[1],
+    }
 
 # ==========================================
 # 3. アプリ進行フロー
@@ -568,3 +581,16 @@ elif st.session_state.stage == 6:
                 else:
                     csv = export_df.to_csv(index=False).encode('utf-8-sig')
                     st.download_button("📥 CSV", csv, "scout.csv", "text/csv")
+
+    # ★ 予備機能: ローテがずれた時の手動補正
+    st.divider()
+    with st.expander("🔧 予備機能（ローテ手動補正）"):
+        st.caption("ローテが途中でずれてしまった時の応急処置です。スコアは変えずにローテーションだけ1つ回します。")
+        cur = st.session_state.rotation
+        if len(cur) >= 6:
+            st.markdown(f"""<div class="rot-grid"><div class="rot-cell rot-front">4: {cur[3]}</div><div class="rot-cell rot-front">3: {cur[4]}</div><div class="rot-cell rot-front">2: {cur[5]}</div><div class="rot-cell">5: {cur[2]}</div><div class="rot-cell">6: {cur[1]}</div><div class="rot-cell rot-server">1: {cur[0]}</div></div>""", unsafe_allow_html=True)
+        if st.button("🔄 ローテを一つ回す", use_container_width=True):
+            save_state_to_history()
+            rotate_team()
+            st.toast("ローテを1つ回しました", icon="🔄")
+            st.rerun()
