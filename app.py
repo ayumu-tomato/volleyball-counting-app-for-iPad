@@ -8,6 +8,7 @@ from PIL import Image
 import json
 import os
 import glob
+import re
 import copy
 
 st.set_page_config(page_title="Volleyball Scouter Ver.9.10", layout="wide")
@@ -574,13 +575,16 @@ elif st.session_state.stage == 6:
             with c_btn:
                 export_df = df.copy()
                 export_df.rename(columns={"video_url": "Video_URL", "video_time": "Time_Sec"}, inplace=True)
+                # ★ ファイル名をセット名と合わせる（ファイル名に使えない文字は _ に置換）
+                safe_set = re.sub(r'[\\/:*?"<>|\s]', '_', str(st.session_state.set_name)) or "1"
+                fname = f"scout_set{safe_set}"
                 if fmt == ".xlsx":
                     buf = io.BytesIO()
                     with pd.ExcelWriter(buf, engine='xlsxwriter') as writer: export_df.to_excel(writer, index=False)
-                    st.download_button("📥 XLSX", buf.getvalue(), "scout.xlsx", "application/vnd.ms-excel")
+                    st.download_button("📥 XLSX", buf.getvalue(), f"{fname}.xlsx", "application/vnd.ms-excel")
                 else:
                     csv = export_df.to_csv(index=False).encode('utf-8-sig')
-                    st.download_button("📥 CSV", csv, "scout.csv", "text/csv")
+                    st.download_button("📥 CSV", csv, f"{fname}.csv", "text/csv")
 
     # ★ 予備機能: ローテがずれた時の手動補正
     st.divider()
