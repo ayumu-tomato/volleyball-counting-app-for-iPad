@@ -535,14 +535,14 @@ elif st.session_state.stage == 6:
             st.markdown('<div class="step-header">6. Quality</div>', unsafe_allow_html=True)
             q_cols = st.columns(2)
             with q_cols[0]:
-                if st.button("# Perfect", use_container_width=True): commit_record("#")
-                if st.button('! OK', use_container_width=True): commit_record('!')
-                if st.button("- ワンチ", use_container_width=True): commit_record("-")
+                if st.button("# ノーかつキル", use_container_width=True): commit_record("#")
+                if st.button('! ノーかつ継続', use_container_width=True): commit_record('!')
+                if st.button("- ワンチかつ継続", use_container_width=True): commit_record("-")
             with q_cols[1]:
-                if st.button("T BlockOut", use_container_width=True): commit_record("T")
+                if st.button("T ワンチかつキル", use_container_width=True): commit_record("T")
                 if st.button('" Good', use_container_width=True): commit_record('"')
-                if st.button("/ Rebound", use_container_width=True): commit_record("/")
-            if st.button("^ シャット/ミス", use_container_width=True): commit_record("^")
+                if st.button("/ シャット", use_container_width=True): commit_record("/")
+            if st.button("^ ミス・アウト", use_container_width=True): commit_record("^")
             st.markdown("---")
             if st.button("🔙 Back (Map/Combo)", use_container_width=True):
                 st.session_state.scout_step = 5 if needs_combo() else 4
