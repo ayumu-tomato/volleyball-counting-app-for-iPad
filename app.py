@@ -157,15 +157,20 @@ def create_court_img(points):
     ax.plot([0,9], [6,6], c='black', lw=2, zorder=2)
     ax.plot([0,9], [12,12], c='black', lw=2, zorder=2)
     ax.plot([-3,-3,12,12,-3], [-3,21,21,-3,-3], c='black', lw=2)
+    # 始点→終点の矢印を先に描く（マーカーの下になるように）
+    if len(points) >= 2:
+        sx, sy = points[0][2], points[0][3]
+        ex, ey = points[1][2], points[1][3]
+        ax.annotate("", xy=(ex, ey), xytext=(sx, sy),
+                    arrowprops=dict(arrowstyle="-|>", color='gray', alpha=0.6, lw=2),
+                    zorder=5)
+
     for i, p in enumerate(points):
         lx, ly = p[2], p[3]
         col = "blue" if i==0 else "red"
         lbl = "S" if i==0 else "E"
         ax.scatter(lx, ly, s=150, c=col, zorder=10, edgecolors='white')
-        ax.text(lx, ly, lbl, color='white', ha='center', va='center', fontweight='bold', fontsize=8)
-        if i==1: 
-            sx, sy = points[0][2], points[0][3]
-            ax.arrow(sx, sy, (lx-sx)*0.85, (ly-sy)*0.85, width=0.15, color='gray', alpha=0.5, length_includes_head=True)
+        ax.text(lx, ly, lbl, color='white', ha='center', va='center', fontweight='bold', fontsize=8, zorder=11)
     ax.set_xlim(-3, 12); ax.set_ylim(-3, 21); ax.axis('off')
     buf = io.BytesIO()
     plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
@@ -535,14 +540,14 @@ elif st.session_state.stage == 6:
             st.markdown('<div class="step-header">6. Quality</div>', unsafe_allow_html=True)
             q_cols = st.columns(2)
             with q_cols[0]:
-                if st.button("# ノーかつキル", use_container_width=True): commit_record("#")
-                if st.button('! ノーかつ継続', use_container_width=True): commit_record('!')
-                if st.button("- ワンチかつ継続", use_container_width=True): commit_record("-")
+                if st.button("# Perfect", use_container_width=True): commit_record("#")
+                if st.button('! OK', use_container_width=True): commit_record('!')
+                if st.button("- ワンチ", use_container_width=True): commit_record("-")
             with q_cols[1]:
-                if st.button("T ワンチかつキル", use_container_width=True): commit_record("T")
+                if st.button("T BlockOut", use_container_width=True): commit_record("T")
                 if st.button('" Good', use_container_width=True): commit_record('"')
-                if st.button("/ シャット", use_container_width=True): commit_record("/")
-            if st.button("^ ミス・アウト", use_container_width=True): commit_record("^")
+                if st.button("/ Rebound", use_container_width=True): commit_record("/")
+            if st.button("^ シャット/ミス", use_container_width=True): commit_record("^")
             st.markdown("---")
             if st.button("🔙 Back (Map/Combo)", use_container_width=True):
                 st.session_state.scout_step = 5 if needs_combo() else 4
