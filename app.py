@@ -211,7 +211,7 @@ def update_score(winner):
     auto_save()
 
 def count_setter_usage(name):
-    if name and name != "Direct/Two":
+    if name and name not in ("ダイレクト", "ツー"):
         st.session_state.setter_counts[name] = st.session_state.setter_counts.get(name, 0) + 1
 
 def count_custom_combo(combo):
@@ -254,6 +254,8 @@ def commit_record(quality, winner=None):
     }
     # ★ その時点のローテにおけるポジション1〜6の選手名を右端に追加（回転前に取得）
     final_row.update(get_positions())
+    # ★ アタック局面（レセプR/トランジションT/チャンスC）を最右列に追加。アタック以外は空。
+    final_row["att_phase"] = curr.get('att_phase', '') if curr.get('skill') == 'A' else ''
     st.session_state.data_log.append(final_row)
     if winner: update_score(winner)
     else:
@@ -273,16 +275,22 @@ def get_sorted_players():
     return sorted(st.session_state.all_players, key=lambda n: st.session_state.player_counts.get(n, 0), reverse=True)
 
 def get_sorted_setters():
-    return sorted(st.session_state.all_players, key=lambda n: st.session_state.setter_counts.get(n, 0), reverse=True) + ["Direct/Two"]
+    return sorted(st.session_state.all_players, key=lambda n: st.session_state.setter_counts.get(n, 0), reverse=True) + ["ダイレクト"]
 
 def get_custom_combos():
     sorted_c = sorted(st.session_state.custom_combo_pool.items(), key=lambda x: x[1], reverse=True)
     return [x[0] for x in sorted_c]
 
-# ★ コンビ入力(step5)が必要か: スパイク かつ Direct/Two 以外
+# ★ コンビ入力(step5)が必要か: スパイク かつ セッター経由(ダイレクト/ツーでない)
 def needs_combo():
     curr = st.session_state.current_input_data
-    return curr.get('skill') == 'A' and curr.get('setter') != "Direct/Two"
+    if curr.get('skill') != 'A':
+        return False
+    if curr.get('setter', '') == '':       # ダイレクト（セッター空）
+        return False
+    if curr.get('combo', '') == 'ツー':     # ツー（comboは既に確定済み）
+        return False
+    return True
 
 # ★ 現ローテにおける各ポジション(1〜6)の選手名を返す
 def get_positions():
@@ -473,10 +481,20 @@ elif st.session_state.stage == 6:
                         st.session_state.current_input_data['setter'] = ""
                         st.session_state.current_input_data['combo'] = ""
                         st.session_state.scout_step = 4 
-                    elif sk == 'A': st.session_state.scout_step = 20
+                    elif sk == 'A': st.session_state.scout_step = 15
                     else: st.session_state.scout_step = 2
                     st.rerun()
             if st.button("🔙 Back", use_container_width=True): st.session_state.scout_step = 0; st.rerun()
+
+        elif st.session_state.scout_step == 15:
+            st.markdown('<div class="step-header">2. Attack Phase</div>', unsafe_allow_html=True)
+            att_phases = [("レセプ", "R"), ("トランジション", "T"), ("チャンス", "C")]
+            for label, code in att_phases:
+                if st.button(label, use_container_width=True):
+                    st.session_state.current_input_data['att_phase'] = code
+                    st.session_state.scout_step = 20
+                    st.rerun()
+            if st.button("🔙 Back", use_container_width=True): st.session_state.scout_step = 1; st.rerun()
 
         elif st.session_state.scout_step == 20:
             st.markdown('<div class="step-header">2.5 Setter</div>', unsafe_allow_html=True)
@@ -484,18 +502,23 @@ elif st.session_state.stage == 6:
             st_cols = st.columns(2)
             for i, s in enumerate(setters):
                 if st_cols[i%2].button(s, use_container_width=True):
-                    st.session_state.current_input_data['setter'] = s
-                    count_setter_usage(s)
-                    # Direct/Two はトス経由でないのでコンビ入力をスキップ（空に）
-                    if s == "Direct/Two":
+                    # ダイレクト = セッターを介さない直接攻撃。setterは空、コンビなしでプレイヤー選択へ
+                    if s == "ダイレクト":
+                        st.session_state.current_input_data['setter'] = ""
                         st.session_state.current_input_data['combo'] = ""
+                    else:
+                        st.session_state.current_input_data['setter'] = s
+                        count_setter_usage(s)
                     st.session_state.scout_step = 2
                     st.rerun()
-            if st.button("🔙 Back", use_container_width=True): st.session_state.scout_step = 1; st.rerun()
+            if st.button("🔙 Back", use_container_width=True): st.session_state.scout_step = 15; st.rerun()
 
         elif st.session_state.scout_step == 2:
             st.markdown('<div class="step-header">3. Player</div>', unsafe_allow_html=True)
             candidates = get_sorted_players()
+            curr = st.session_state.current_input_data
+            # アタックでセッターが選ばれている場合のみ「ツー」を候補末尾に追加
+            show_two = curr.get('skill') == 'A' and curr.get('setter', '') != ''
             p_cols = st.columns(2)
             for i, p in enumerate(candidates):
                 if p_cols[i%2].button(p, use_container_width=True):
@@ -503,7 +526,17 @@ elif st.session_state.stage == 6:
                     st.session_state.player_counts[p] = st.session_state.player_counts.get(p, 0) + 1
                     st.session_state.scout_step = 4
                     st.rerun()
-            back_step = 20 if st.session_state.current_input_data.get('skill') == 'A' else 1
+            if show_two:
+                if st.button("🏐 ツー", use_container_width=True):
+                    # ツー = セッター自身の攻撃。playerをセッターに、comboは「ツー」固定（コンビ入力スキップ）
+                    setter_name = curr.get('setter', '')
+                    st.session_state.current_input_data['player'] = setter_name
+                    st.session_state.current_input_data['combo'] = "ツー"
+                    if setter_name:
+                        st.session_state.player_counts[setter_name] = st.session_state.player_counts.get(setter_name, 0) + 1
+                    st.session_state.scout_step = 4
+                    st.rerun()
+            back_step = 20 if curr.get('skill') == 'A' else 1
             if st.button("🔙 Back", use_container_width=True): st.session_state.scout_step = back_step; st.rerun()
 
         elif st.session_state.scout_step == 4:
@@ -540,14 +573,14 @@ elif st.session_state.stage == 6:
             st.markdown('<div class="step-header">6. Quality</div>', unsafe_allow_html=True)
             q_cols = st.columns(2)
             with q_cols[0]:
-                if st.button("# ノーかつ決定", use_container_width=True): commit_record("#")
-                if st.button('! ノーかつ継続', use_container_width=True): commit_record('!')
-                if st.button("- ワンチかつ継続", use_container_width=True): commit_record("-")
+                if st.button("# Perfect", use_container_width=True): commit_record("#")
+                if st.button('! OK', use_container_width=True): commit_record('!')
+                if st.button("- ワンチ", use_container_width=True): commit_record("-")
             with q_cols[1]:
-                if st.button("T ワンチかつ決定", use_container_width=True): commit_record("T")
-                if st.button('" ー', use_container_width=True): commit_record('"')
-                if st.button("/ シャット・リバウンド", use_container_width=True): commit_record("/")
-            if st.button("^ アウト", use_container_width=True): commit_record("^")
+                if st.button("T BlockOut", use_container_width=True): commit_record("T")
+                if st.button('" Good', use_container_width=True): commit_record('"')
+                if st.button("/ Rebound", use_container_width=True): commit_record("/")
+            if st.button("^ シャット/ミス", use_container_width=True): commit_record("^")
             st.markdown("---")
             if st.button("🔙 Back (Map/Combo)", use_container_width=True):
                 st.session_state.scout_step = 5 if needs_combo() else 4
